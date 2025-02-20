@@ -1,10 +1,15 @@
+require('dotenv').config(); // Load environment variables
+
 const mongoose = require('mongoose');
 
-// Replace this with your MongoDB Atlas connection string
-const uri = process.env.MONGODB_URI;
-// Connect to MongoDB Atlas
+const uri = process.env.MONGODB_URI; // Check if this prints correctly
+if (!uri) {
+  console.error("MONGODB_URI is not defined. Check your .env file.");
+  process.exit(1); // Stop execution if missing
+}
+
 mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => console.log('MongoDB connected successfully'))
-  .catch(err => console.log('MongoDB connection error:', err));
+  .catch(err => console.error('MongoDB connection error:', err));
 
 module.exports = mongoose;
