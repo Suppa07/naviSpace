@@ -9,6 +9,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 // Middleware to authenticate using token from cookies
 function authenticateToken(req, res, next) {
+  console.log(req.cookies)
   const token = req.cookies.jwt; // Get token from cookies
 
   if (!token) return res.status(401).json({ error: "Access denied. No token provided." });

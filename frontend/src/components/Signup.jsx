@@ -13,9 +13,10 @@ const Signup = () => {
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { 
+  useEffect(() => {
     // Fetch the list of existing companies
-    axios.get(`${import.meta.env.VITE_API_URL}companies`)
+    axios
+      .get(`${import.meta.env.VITE_API_URL}companies`)
       .then((res) => {
         console.log(res.data);
         setCompanies(res.data);
@@ -35,7 +36,11 @@ const Signup = () => {
     e.preventDefault();
 
     try {
-      const res = await axios.post(`${import.meta.env.VITE_API_URL}users/signup`, formData);
+      const res = await axios.post(
+        `${import.meta.env.VITE_API_URL}users/signup`,
+        formData,
+        { withCredentials: true }
+      );
       alert(res.data.message);
     } catch (err) {
       console.error(err);
@@ -46,7 +51,7 @@ const Signup = () => {
   return (
     <div className="max-w-md mx-auto mt-10 p-6 bg-white shadow-lg rounded-lg">
       <h2 className="text-2xl font-bold mb-4 text-center">Signup</h2>
-      
+
       <form onSubmit={handleSubmit}>
         <div className="mb-4">
           <label className="block font-semibold">Username:</label>
