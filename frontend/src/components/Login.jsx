@@ -1,19 +1,24 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
+import { Container, Row, Col, Form, Button, Card, Alert } from 'react-bootstrap';
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const navigate = useNavigate(); // React Router hook for navigation
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError("");
+    setLoading(true);
 
-    // Add validation (ensure email and password are provided)
+    // Add validation
     if (!email || !password) {
       setError("Please fill in both fields.");
+      setLoading(false);
       return;
     }
 
@@ -31,41 +36,70 @@ const Login = () => {
         navigate("/user");
       }
     } catch (err) {
-      console.error(err);
-      setError("Invalid email or password.");
+      setError(err.response?.data?.error || "Invalid email or password.");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-md mx-auto mt-10 p-6 bg-white shadow-lg rounded-lg">
-      <h2 className="text-2xl font-bold mb-4 text-center">Login</h2>
-      {error && <div className="alert alert-danger">{error}</div>}
-      <form onSubmit={handleSubmit}>
-        <div className="mb-4">
-          <label className="block font-semibold">Email:</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-3 py-2 border rounded-lg"
-            required
-          />
-        </div>
-        <div className="mb-4">
-          <label className="block font-semibold">Password:</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-3 py-2 border rounded-lg"
-            required
-          />
-        </div>
-        <button type="submit" className="w-full bg-blue-500 text-white py-2 rounded-lg">
-          Login
-        </button>
-      </form>
-    </div>
+    <Container className="py-5">
+      <Row className="justify-content-center">
+        <Col md={6} lg={5}>
+          <Card className="shadow">
+            <Card.Body className="p-4">
+              <div className="text-center mb-4">
+                <h2 className="fw-bold">Welcome Back</h2>
+                <p className="text-muted">Sign in to your account</p>
+              </div>
+              
+              {error && <Alert variant="danger">{error}</Alert>}
+              
+              <Form onSubmit={handleSubmit}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Email Address</Form.Label>
+                  <Form.Control
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter your email"
+                    required
+                  />
+                </Form.Group>
+                
+                <Form.Group className="mb-4">
+                  <Form.Label>Password</Form.Label>
+                  <Form.Control
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    required
+                  />
+                </Form.Group>
+                
+                <div className="d-grid">
+                  <Button 
+                    variant="primary" 
+                    type="submit" 
+                    size="lg"
+                    disabled={loading}
+                  >
+                    {loading ? 'Signing in...' : 'Sign In'}
+                  </Button>
+                </div>
+              </Form>
+              
+              <div className="text-center mt-4">
+                <p>
+                  Don't have an account? <Link to="/signup">Sign up</Link>
+                </p>
+              </div>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+    </Container>
   );
 };
 

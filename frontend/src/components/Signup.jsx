@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
+import { Container, Row, Col, Form, Button, Card, Alert, Spinner } from 'react-bootstrap';
 
 const Signup = () => {
   const [formData, setFormData] = useState({
@@ -10,22 +11,22 @@ const Signup = () => {
     role: "user",
     company_name: "",
   });
-  const navigate = useNavigate(); // React Router hook for navigation
-
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const navigate = useNavigate();
 
   useEffect(() => {
     // Fetch the list of existing companies
     axios
       .get(`${import.meta.env.VITE_API_URL}companies`)
       .then((res) => {
-        console.log(res.data);
         setCompanies(res.data);
         setLoading(false);
       })
       .catch((err) => {
-        console.error("Error fetching companies:", err);
+        setError("Failed to load companies. Please try again later.");
         setLoading(false);
       });
   }, []);
@@ -36,6 +37,21 @@ const Signup = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError("");
+    setSubmitting(true);
+
+    // Validation
+    if (!formData.username || !formData.email_id || !formData.password) {
+      setError("Please fill in all required fields");
+      setSubmitting(false);
+      return;
+    }
+
+    if (formData.role === "user" && !formData.company_name) {
+      setError("Please select a company");
+      setSubmitting(false);
+      return;
+    }
 
     try {
       const res = await axios.post(
@@ -43,119 +59,145 @@ const Signup = () => {
         formData,
         { withCredentials: true }
       );
-      alert(res.data.message);
+      
       if (formData.role === "admin") {
         navigate("/admin");
       } else if (formData.role === "user") {
         navigate("/user");
       }
     } catch (err) {
-      console.error(err);
-      alert("Signup failed. Check console for details.");
+      setError(err.response?.data?.message || "Signup failed. Please try again.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
-    <div className="max-w-md mx-auto mt-10 p-6 bg-white shadow-lg rounded-lg">
-      <h2 className="text-2xl font-bold mb-4 text-center">Signup</h2>
+    <Container className="py-5">
+      <Row className="justify-content-center">
+        <Col md={8} lg={6}>
+          <Card className="shadow">
+            <Card.Body className="p-4">
+              <div className="text-center mb-4">
+                <h2 className="fw-bold">Create an Account</h2>
+                <p className="text-muted">Join NaviSpace to manage office resources</p>
+              </div>
+              
+              {error && <Alert variant="danger">{error}</Alert>}
+              
+              <Form onSubmit={handleSubmit}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Username</Form.Label>
+                  <Form.Control
+                    type="text"
+                    name="username"
+                    value={formData.username}
+                    onChange={handleChange}
+                    placeholder="Enter your username"
+                    required
+                  />
+                </Form.Group>
 
-      <form onSubmit={handleSubmit}>
-        <div className="mb-4">
-          <label className="block font-semibold">Username:</label>
-          <input
-            type="text"
-            name="username"
-            value={formData.username}
-            onChange={handleChange}
-            className="w-full px-3 py-2 border rounded-lg"
-            required
-          />
-        </div>
+                <Form.Group className="mb-3">
+                  <Form.Label>Email Address</Form.Label>
+                  <Form.Control
+                    type="email"
+                    name="email_id"
+                    value={formData.email_id}
+                    onChange={handleChange}
+                    placeholder="Enter your email"
+                    required
+                  />
+                </Form.Group>
 
-        <div className="mb-4">
-          <label className="block font-semibold">Email:</label>
-          <input
-            type="email"
-            name="email_id"
-            value={formData.email_id}
-            onChange={handleChange}
-            className="w-full px-3 py-2 border rounded-lg"
-            required
-          />
-        </div>
+                <Form.Group className="mb-3">
+                  <Form.Label>Password</Form.Label>
+                  <Form.Control
+                    type="password"
+                    name="password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    placeholder="Create a password"
+                    required
+                  />
+                </Form.Group>
 
-        <div className="mb-4">
-          <label className="block font-semibold">Password:</label>
-          <input
-            type="password"
-            name="password"
-            value={formData.password}
-            onChange={handleChange}
-            className="w-full px-3 py-2 border rounded-lg"
-            required
-          />
-        </div>
+                <Form.Group className="mb-3">
+                  <Form.Label>Role</Form.Label>
+                  <Form.Select
+                    name="role"
+                    value={formData.role}
+                    onChange={handleChange}
+                    required
+                  >
+                    <option value="user">User</option>
+                    <option value="admin">Admin</option>
+                  </Form.Select>
+                </Form.Group>
 
-        <div className="mb-4">
-          <label className="block font-semibold">Role:</label>
-          <select
-            name="role"
-            value={formData.role}
-            onChange={handleChange}
-            className="w-full px-3 py-2 border rounded-lg"
-            required
-          >
-            <option value="user">User</option>
-            <option value="admin">Admin</option>
-          </select>
-        </div>
+                {formData.role === "admin" ? (
+                  <Form.Group className="mb-4">
+                    <Form.Label>Company Name</Form.Label>
+                    <Form.Control
+                      type="text"
+                      name="company_name"
+                      value={formData.company_name}
+                      onChange={handleChange}
+                      placeholder="Enter new company name"
+                      required
+                    />
+                    <Form.Text className="text-muted">
+                      As an admin, you'll create a new company.
+                    </Form.Text>
+                  </Form.Group>
+                ) : (
+                  <Form.Group className="mb-4">
+                    <Form.Label>Select Company</Form.Label>
+                    {loading ? (
+                      <div className="text-center py-3">
+                        <Spinner animation="border" variant="primary" />
+                        <p className="mt-2">Loading companies...</p>
+                      </div>
+                    ) : (
+                      <Form.Select
+                        name="company_name"
+                        value={formData.company_name}
+                        onChange={handleChange}
+                        required
+                      >
+                        <option value="">-- Select a company --</option>
+                        {companies.map((company) => (
+                          <option key={company._id} value={company.company_name}>
+                            {company.company_name}
+                          </option>
+                        ))}
+                      </Form.Select>
+                    )}
+                  </Form.Group>
+                )}
 
-        {/* Show Company Selection Based on Role */}
-        {formData.role === "admin" ? (
-          <div className="mb-4">
-            <label className="block font-semibold">Add Company:</label>
-            <input
-              type="text"
-              name="company_name"
-              value={formData.company_name}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border rounded-lg"
-              placeholder="Enter new company name"
-              required
-            />
-          </div>
-        ) : (
-          <div className="mb-4">
-            <label className="block font-semibold">Select Company:</label>
-            {loading ? (
-              <p>Loading companies...</p>
-            ) : (
-              <select
-                name="company_name"
-                value={formData.company_name}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border rounded-lg"
-                required
-              >
-                <option value="">-- Select a company --</option>
-                {companies.map((company) => (
-                  <option key={company._id} value={company.company_name}>
-                    {company.company_name}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-        )}
-
-        <button
-          type="submit"
-          className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition"
-        >
-          Signup
-        </button>
-      </form>
-    </div>
+                <div className="d-grid">
+                  <Button 
+                    variant="primary" 
+                    type="submit" 
+                    size="lg"
+                    disabled={submitting}
+                  >
+                    {submitting ? 'Creating Account...' : 'Sign Up'}
+                  </Button>
+                </div>
+              </Form>
+              
+              <div className="text-center mt-4">
+                <p>
+                  Already have an account? <Link to="/login">Sign in</Link>
+                </p>
+              </div>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+    </Container>
   );
 };
 

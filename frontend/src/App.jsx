@@ -6,12 +6,14 @@ import Signup from './components/Signup';
 import AdminDashboard from './components/AdminDashboard';
 import UserDashboard from './components/UserDashboard';
 import Navbar from './components/Navbar';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import 'bootstrap-icons/font/bootstrap-icons.css';
 
 function App() {
   return (
     <Router>
       <Navbar />
-      <div className="container mt-4">
+      <div className="app-container">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />

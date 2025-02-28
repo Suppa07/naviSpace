@@ -25,9 +25,8 @@ exports.getAllResources = async (req, res) => {
     const reservations = await Reservation.find({
       resource_id: { $in: resources.map((r) => r._id) },
       end_time: { $gt: new Date() },
-    });
+    }).populate('resource_id');
 
-    
     res.json({ resources, reservations });
   } catch (err) {
     console.error(err);
