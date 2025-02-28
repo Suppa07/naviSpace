@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
+import 'bootstrap/dist/css/bootstrap.min.css';
 
 const AdminDashboard = () => {
   const [users, setUsers] = useState([]);
@@ -10,7 +11,7 @@ const AdminDashboard = () => {
   const [newResource, setNewResource] = useState({
     name: "",
     type: "",
-    location: "",
+    location: { x: "", y: "" },
     capacity: "",
     amenities: "",
   });
@@ -118,7 +119,7 @@ const AdminDashboard = () => {
       <h2 className="mt-4">Users</h2>
       <ul className="list-group">
         {users.map((user) => (
-          <li key={user._id}>
+          <li key={user._id} className="list-group-item">
             {user.username} ({user.email})
             
           </li>
@@ -128,7 +129,7 @@ const AdminDashboard = () => {
       <h2 className="mt-4">Resources & Reservations</h2>
       <ul className="list-group">
         {resources.map((resource) => (
-          <li key={resource._id}>
+          <li key={resource._id} className="list-group-item">
             {resource.name} ({resource.type})
           </li>
         ))}
@@ -143,7 +144,7 @@ const AdminDashboard = () => {
       <h2 className="mt-4">Floor Plans</h2>
       <ul className="list-group">
         {floorPlans.map((plan) => (
-          <li key={plan._id}>
+          <li key={plan._id} className="list-group-item">
             <strong>{plan.name}</strong>
             <button className="btn btn-link"
               onClick={() =>
@@ -155,66 +156,78 @@ const AdminDashboard = () => {
 
             {/* Add Resource after each floor */}
             <h3 className="mt-4">Add Resource to {plan.name}</h3>
-            <input
-              type="text"
-              className="form-control mb-2"
-              placeholder="Resource Name"
-              value={newResource.name}
-              onChange={(e) =>
-                setNewResource({ ...newResource, name: e.target.value })
-              }
-            />
-            <input
-              type="text"
-              className="form-control mb-2"
-              placeholder="Resource Type"
-              value={newResource.type}
-              onChange={(e) =>
-                setNewResource({ ...newResource, type: e.target.value })
-              }
-            />
-            <input
-              type="number"
-              className="form-control mb-2"
-              placeholder="X Coordinate"
-              value={newResource.location.x}
-              onChange={(e) =>
-                setNewResource({
-                  ...newResource,
-                  location: { ...newResource.location, x: e.target.value },
-                })
-              }
-            />
-            <input
-              type="number"
-              className="form-control mb-2"
-              placeholder="Y Coordinate"
-              value={newResource.location.y}
-              onChange={(e) =>
-                setNewResource({
-                  ...newResource,
-                  location: { ...newResource.location, y: e.target.value },
-                })
-              }
-            />
-            <input
-              type="number"
-              className="form-control mb-2"
-              placeholder="Capacity"
-              value={newResource.capacity}
-              onChange={(e) =>
-                setNewResource({ ...newResource, capacity: e.target.value })
-              }
-            />
-            <input
-              type="text"
-              className="form-control mb-2"
-              placeholder="Amenities (comma-separated)"
-              value={newResource.amenities}
-              onChange={(e) =>
-                setNewResource({ ...newResource, amenities: e.target.value })
-              }
-            />
+            <div className="form-group">
+              <label>Resource Name</label>
+              <input
+                type="text"
+                className="form-control"
+                value={newResource.name}
+                onChange={(e) =>
+                  setNewResource({ ...newResource, name: e.target.value })
+                }
+              />
+            </div>
+            <div className="form-group">
+              <label>Resource Type</label>
+              <input
+                type="text"
+                className="form-control"
+                value={newResource.type}
+                onChange={(e) =>
+                  setNewResource({ ...newResource, type: e.target.value })
+                }
+              />
+            </div>
+            <div className="form-group">
+              <label>X Coordinate</label>
+              <input
+                type="number"
+                className="form-control"
+                value={newResource.location.x}
+                onChange={(e) =>
+                  setNewResource({
+                    ...newResource,
+                    location: { ...newResource.location, x: e.target.value },
+                  })
+                }
+              />
+            </div>
+            <div className="form-group">
+              <label>Y Coordinate</label>
+              <input
+                type="number"
+                className="form-control"
+                value={newResource.location.y}
+                onChange={(e) =>
+                  setNewResource({
+                    ...newResource,
+                    location: { ...newResource.location, y: e.target.value },
+                  })
+                }
+              />
+            </div>
+            <div className="form-group">
+              <label>Capacity</label>
+              <input
+                type="number"
+                className="form-control"
+                value={newResource.capacity}
+                onChange={(e) =>
+                  setNewResource({ ...newResource, capacity: e.target.value })
+                }
+              />
+            </div>
+            <div className="form-group">
+              <label>Amenities (comma-separated)</label>
+              <input
+                type="text"
+                className="form-control"
+                value={newResource.amenities}
+                onChange={(e) =>
+                  setNewResource({ ...newResource, amenities: e.target.value })
+                }
+              />
+            </div>
             <button className="btn btn-success" onClick={() => handleAddResource(plan._id)}>Add</button>
           </li>
         ))}

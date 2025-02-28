@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
 
 const Signup = () => {
   const [formData, setFormData] = useState({
@@ -9,6 +10,7 @@ const Signup = () => {
     role: "user",
     company_name: "",
   });
+  const navigate = useNavigate(); // React Router hook for navigation
 
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,11 +39,16 @@ const Signup = () => {
 
     try {
       const res = await axios.post(
-        `${import.meta.env.VITE_API_URL}users/signup`,
+        `${import.meta.env.VITE_API_URL}auth/signup`,
         formData,
         { withCredentials: true }
       );
       alert(res.data.message);
+      if (formData.role === "admin") {
+        navigate("/admin");
+      } else if (formData.role === "user") {
+        navigate("/user");
+      }
     } catch (err) {
       console.error(err);
       alert("Signup failed. Check console for details.");

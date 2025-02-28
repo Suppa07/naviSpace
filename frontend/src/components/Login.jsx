@@ -1,6 +1,6 @@
-// src/components/Login.jsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -18,65 +18,52 @@ const Login = () => {
     }
 
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}users/login`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ email_id:email, password }),
-          credentials: "include", 
-        }
+      const response = await axios.post(
+        `${import.meta.env.VITE_API_URL}auth/login`,
+        { email_id: email, password },
+        { withCredentials: true }
       );
 
-      const data = await response.json();
-
-      if (response.ok) {
-        // Success: Navigate to the dashboard or home page
-        if (response.ok) {
-          // localStorage.setItem("token", data.token);
-          
-          navigate("/contact");
-        }
+      // Redirect based on role
+      if (response.data.role === "admin") {
+        navigate("/admin");
       } else {
-        // Error: Show error message
-        setError(data.message || "Login failed");
+        navigate("/user");
       }
     } catch (err) {
-      console.error("Login failed", err);
-      setError("An error occurred during login.");
+      console.error(err);
+      setError("Invalid email or password.");
     }
   };
 
   return (
-    <div className="login-container">
-      <h2>Login</h2>
-      {error && <p className="error-message">{error}</p>}
+    <div className="max-w-md mx-auto mt-10 p-6 bg-white shadow-lg rounded-lg">
+      <h2 className="text-2xl font-bold mb-4 text-center">Login</h2>
+      {error && <div className="alert alert-danger">{error}</div>}
       <form onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label htmlFor="email">Email:</label>
+        <div className="mb-4">
+          <label className="block font-semibold">Email:</label>
           <input
             type="email"
-            id="email"
-            name="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            className="w-full px-3 py-2 border rounded-lg"
             required
           />
         </div>
-        <div className="form-group">
-          <label htmlFor="password">Password:</label>
+        <div className="mb-4">
+          <label className="block font-semibold">Password:</label>
           <input
             type="password"
-            id="password"
-            name="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            className="w-full px-3 py-2 border rounded-lg"
             required
           />
         </div>
-        <button type="submit">Login</button>
+        <button type="submit" className="w-full bg-blue-500 text-white py-2 rounded-lg">
+          Login
+        </button>
       </form>
     </div>
   );

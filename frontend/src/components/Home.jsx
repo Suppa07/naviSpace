@@ -8,7 +8,7 @@ const Home = () => {
   React.useEffect(() => {
     const fetchProtectedData = async () => {
       try {
-        const response = await fetch(`${backendUrl}users/protected`, {
+        const response = await fetch(`${backendUrl}auth/protected`, {
           method: "GET",
           credentials: "include", // 🔹 Include cookies in the request
         });
