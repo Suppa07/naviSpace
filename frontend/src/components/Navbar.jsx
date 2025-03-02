@@ -7,10 +7,12 @@ const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // Check if user is logged in
     const checkAuth = async () => {
+      setLoading(true);
       try {
         const response = await axios.get(`${import.meta.env.VITE_API_URL}auth/protected`, {
           withCredentials: true
@@ -18,6 +20,8 @@ const Navbar = () => {
         setUser(response.data);
       } catch (err) {
         setUser(null);
+      } finally {
+        setLoading(false);
       }
     };
     
@@ -36,6 +40,14 @@ const Navbar = () => {
     }
   };
 
+  const getDashboardLink = () => {
+    if (!user) return null;
+    
+    return user.role === 'admin' 
+      ? <Nav.Link as={Link} to="/admin" active={location.pathname === '/admin'}>Admin Dashboard</Nav.Link>
+      : <Nav.Link as={Link} to="/user" active={location.pathname === '/user'}>User Dashboard</Nav.Link>;
+  };
+
   return (
     <BootstrapNavbar bg="primary" variant="dark" expand="lg">
       <Container>
@@ -50,36 +62,28 @@ const Navbar = () => {
               Home
             </Nav.Link>
             
-            {user ? (
-              // Show these links only when logged in
-              <>
-                {user.role === 'admin' ? (
-                  <Nav.Link as={Link} to="/admin" active={location.pathname === '/admin'}>
-                    Admin Dashboard
+            {!loading && (
+              user ? (
+                // Show dashboard link based on user role
+                getDashboardLink()
+              ) : (
+                // Show these links when not logged in
+                <>
+                  <Nav.Link as={Link} to="/login" active={location.pathname === '/login'}>
+                    Login
                   </Nav.Link>
-                ) : (
-                  <Nav.Link as={Link} to="/user" active={location.pathname === '/user'}>
-                    User Dashboard
+                  <Nav.Link as={Link} to="/signup" active={location.pathname === '/signup'}>
+                    Signup
                   </Nav.Link>
-                )}
-              </>
-            ) : (
-              // Show these links when not logged in
-              <>
-                <Nav.Link as={Link} to="/login" active={location.pathname === '/login'}>
-                  Login
-                </Nav.Link>
-                <Nav.Link as={Link} to="/signup" active={location.pathname === '/signup'}>
-                  Signup
-                </Nav.Link>
-              </>
+                </>
+              )
             )}
           </Nav>
           
-          {user && (
+          {!loading && user && (
             <Nav>
               <span className="navbar-text me-3 text-light">
-                Welcome, {user.username}
+                Welcome, {user.username} ({user.role})
               </span>
               <Button variant="outline-light" onClick={handleLogout}>
                 Logout

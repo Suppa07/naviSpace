@@ -93,3 +93,17 @@ exports.getFavorites = async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 };
+
+exports.getUnexpiredReservations = async (req, res) => {
+  try {
+    const unexpiredReservations = await Reservation.find({
+      participants: req.user.id,
+      end_time: { $gt: new Date() },
+    }).populate("resource_id");
+
+    res.json(unexpiredReservations);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+};
