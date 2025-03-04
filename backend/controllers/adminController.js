@@ -51,6 +51,7 @@ exports.reserveResource = async (req, res) => {
       start_time,
       end_time,
       participants: [user_id],
+      resource_type: await Resource.findById(resource_id).select('resource_type'),
       is_fixed: false,
     });
 
