@@ -10,6 +10,6 @@ router.get("/favorites", authenticateToken, userController.getFavorites);
 router.get("/reservations", authenticateToken, userController.getUnexpiredReservations);
 router.get("/resource-location/:resourceId", authenticateToken, userController.getResourceLocation);
 router.get("/floorplans", authenticateToken, userController.getAllFloorPlans);
-
+router.delete("/reservation/:reservationId", authenticateToken, userController.deleteReservation);
 
 module.exports = router;

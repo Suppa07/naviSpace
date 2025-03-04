@@ -1,11 +1,14 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { Card, Button, Table, Alert, Badge } from 'react-bootstrap';
+import { Card, Button, Table, Alert, Badge, Modal } from 'react-bootstrap';
 
 const UserManagement = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
 
   const API_URL = import.meta.env.VITE_API_URL;
 
@@ -45,6 +48,36 @@ const UserManagement = () => {
     }
   };
 
+  const openDeleteModal = (user) => {
+    setSelectedUser(user);
+    setShowDeleteModal(true);
+  };
+
+  const closeDeleteModal = () => {
+    setShowDeleteModal(false);
+    setSelectedUser(null);
+  };
+
+  const handleDeleteUser = async () => {
+    if (!selectedUser) return;
+    
+    try {
+      await axios.delete(`${API_URL}admin/users/${selectedUser._id}`, {
+        withCredentials: true
+      });
+      
+      setSuccessMessage("User removed successfully!");
+      setTimeout(() => setSuccessMessage(""), 3000);
+      
+      // Remove the deleted user from the state
+      setUsers(users.filter(u => u._id !== selectedUser._id));
+      closeDeleteModal();
+    } catch (error) {
+      console.error("Error removing user:", error);
+      setError("Failed to remove user. Please try again.");
+    }
+  };
+
   return (
     <Card className="shadow-sm">
       <Card.Body>
@@ -54,6 +87,18 @@ const UserManagement = () => {
             <i className="bi bi-arrow-clockwise me-1"></i> Refresh
           </Button>
         </div>
+        
+        {successMessage && (
+          <Alert variant="success" className="mb-4">
+            {successMessage}
+          </Alert>
+        )}
+        
+        {error && (
+          <Alert variant="danger" className="mb-4">
+            {error}
+          </Alert>
+        )}
         
         {loading ? (
           <div className="text-center py-4">
@@ -76,6 +121,7 @@ const UserManagement = () => {
                 <th>Email</th>
                 <th>Role</th>
                 <th>Joined</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -91,12 +137,46 @@ const UserManagement = () => {
                   <td>
                     {user.createdAt ? formatDateTime(user.createdAt) : 'N/A'}
                   </td>
+                  <td>
+                    {user.role !== 'admin' && (
+                      <Button 
+                        variant="danger" 
+                        size="sm"
+                        onClick={() => openDeleteModal(user)}
+                      >
+                        <i className="bi bi-trash me-1"></i> Remove
+                      </Button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </Table>
         )}
       </Card.Body>
+
+      {/* Delete User Modal */}
+      <Modal show={showDeleteModal} onHide={closeDeleteModal}>
+        <Modal.Header closeButton>
+          <Modal.Title>Remove User</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {selectedUser && (
+            <p>
+              Are you sure you want to remove <strong>{selectedUser.username}</strong> ({selectedUser.email_id}) from your company?
+              This action cannot be undone.
+            </p>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={closeDeleteModal}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={handleDeleteUser}>
+            Remove User
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </Card>
   );
 };

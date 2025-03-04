@@ -153,3 +153,56 @@ exports.getAllFloorPlans = async (req, res) => {
     res.status(500).send("Error fetching floor plans.");
   }
 };
+
+exports.deleteResource = async (req, res) => {
+  try {
+    const resource = await Resource.findById(req.params.resource_id);
+
+    if (!resource) return res.status(404).send("Resource not found.");
+    if (resource.company_id.toString() !== req.user.company_id.toString()) {
+      return res.status(403).send("Cannot remove resources outside your company.");
+    }
+
+    await Resource.deleteOne({ _id: resource._id });
+    await Reservation.deleteMany({ resource_id: resource._id });
+    res.json({ message: "Resource removed successfully." });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Error removing resource.");
+  }
+};
+
+exports.deleteFloorPlan = async (req, res) => {
+  try {
+    const floor = await Floor.findById(req.params.floor_id);
+
+    if (!floor) return res.status(404).send("Floor plan not found.");
+    if (floor.company_id.toString() !== req.user.company_id.toString()) {
+      return res.status(403).send("Cannot delete floor plans outside your company.");
+    }
+
+    await Floor.deleteOne({ _id: floor._id });
+    res.json({ message: "Floor plan deleted successfully." });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Error deleting floor plan.");
+  }
+};
+
+exports.deleteReservation = async (req, res) => {
+  try {
+    const reservation = await Reservation.findById(req.params.reservation_id);
+
+    if (!reservation) return res.status(404).send("Reservation not found.");
+    if (reservation.company_id.toString() !== req.user.company_id.toString()) {
+      return res.status(403).send("Cannot delete reservations outside your company.");
+    }
+
+    await Reservation.deleteOne({ _id: reservation._id });
+    res.json({ message: "Reservation deleted successfully." });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Error deleting reservation.");
+  }
+};
+

@@ -169,3 +169,27 @@ exports.getAllFloorPlans = async (req, res) => {
     res.status(500).send("Error fetching floor plans.");
   }
 };
+
+exports.deleteReservation = async (req, res) => {
+  const { reservationId } = req.params;
+
+  try {
+    const reservation = await Reservation.findById(reservationId);
+
+    if (!reservation) {
+      return res.status(404).json({ error: "Reservation not found" });
+    }
+
+    // Check if user is a participant of the reservation
+    if (!reservation.participants.includes(req.user.id)) {
+      return res.status(403).json({ error: "You don't have access to this reservation" });
+    }
+
+    await Reservation.findByIdAndDelete(reservationId);
+
+    res.json({ message: "Reservation deleted successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+};

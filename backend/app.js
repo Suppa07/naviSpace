@@ -6,7 +6,7 @@ var logger = require('morgan');
 const mongoose = require('./config/db');  
 const cors = require('cors');
 var app = express();
-require("./jobs/cleanupJob");
+// require("./jobs/cleanupJob");
 
 app.use(cors({
   origin: 'http://localhost:5173', // Replace with your frontend URL

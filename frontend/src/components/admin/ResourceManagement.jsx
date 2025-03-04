@@ -10,7 +10,9 @@ const ResourceManagement = () => {
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [showReserveModal, setShowReserveModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedResource, setSelectedResource] = useState(null);
+  const [selectedReservation, setSelectedReservation] = useState(null);
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -78,6 +80,62 @@ const ResourceManagement = () => {
     setStartTime("");
     setEndTime("");
     setError("");
+  };
+
+  const openDeleteResourceModal = (resource) => {
+    setSelectedResource(resource);
+    setShowDeleteModal(true);
+  };
+
+  const openDeleteReservationModal = (reservation) => {
+    setSelectedReservation(reservation);
+    setShowDeleteModal(true);
+  };
+
+  const closeDeleteModal = () => {
+    setShowDeleteModal(false);
+    setSelectedResource(null);
+    setSelectedReservation(null);
+  };
+
+  const handleDeleteResource = async () => {
+    if (!selectedResource) return;
+    
+    try {
+      await axios.delete(`${API_URL}admin/resource/${selectedResource._id}`, {
+        withCredentials: true
+      });
+      
+      setSuccessMessage("Resource deleted successfully!");
+      setTimeout(() => setSuccessMessage(""), 3000);
+      
+      // Remove the deleted resource from the state
+      setResources(resources.filter(r => r._id !== selectedResource._id));
+      closeDeleteModal();
+    } catch (error) {
+      console.error("Error deleting resource:", error);
+      setError("Failed to delete resource. Please try again.");
+    }
+  };
+
+  const handleDeleteReservation = async () => {
+    if (!selectedReservation) return;
+    
+    try {
+      await axios.delete(`${API_URL}admin/reservation/${selectedReservation._id}`, {
+        withCredentials: true
+      });
+      
+      setSuccessMessage("Reservation deleted successfully!");
+      setTimeout(() => setSuccessMessage(""), 3000);
+      
+      // Remove the deleted reservation from the state
+      setReservations(reservations.filter(r => r._id !== selectedReservation._id));
+      closeDeleteModal();
+    } catch (error) {
+      console.error("Error deleting reservation:", error);
+      setError("Failed to delete reservation. Please try again.");
+    }
   };
 
   const handleReserveResource = async () => {
@@ -255,9 +313,17 @@ const ResourceManagement = () => {
                       <Button 
                         variant="primary" 
                         size="sm"
+                        className="me-2"
                         onClick={() => openReserveModal(resource)}
                       >
                         <i className="bi bi-calendar-plus me-1"></i> Reserve
+                      </Button>
+                      <Button 
+                        variant="danger" 
+                        size="sm"
+                        onClick={() => openDeleteResourceModal(resource)}
+                      >
+                        <i className="bi bi-trash me-1"></i> Delete
                       </Button>
                     </td>
                   </tr>
@@ -285,6 +351,7 @@ const ResourceManagement = () => {
                   <th>Start Time</th>
                   <th>End Time</th>
                   <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -298,6 +365,15 @@ const ResourceManagement = () => {
                     <td>{formatDateTime(reservation.end_time)}</td>
                     <td>
                       <Badge bg="success">Active</Badge>
+                    </td>
+                    <td>
+                      <Button 
+                        variant="danger" 
+                        size="sm"
+                        onClick={() => openDeleteReservationModal(reservation)}
+                      >
+                        <i className="bi bi-trash me-1"></i> Delete
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -423,6 +499,45 @@ const ResourceManagement = () => {
           >
             Reserve for {selectedUsers.length} User{selectedUsers.length !== 1 ? 's' : ''}
           </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal show={showDeleteModal} onHide={closeDeleteModal}>
+        <Modal.Header closeButton>
+          <Modal.Title>
+            {selectedResource ? "Delete Resource" : "Delete Reservation"}
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {selectedResource && (
+            <p>
+              Are you sure you want to delete the resource <strong>{selectedResource.name}</strong>?
+              This will also delete all reservations associated with this resource.
+            </p>
+          )}
+          {selectedReservation && (
+            <p>
+              Are you sure you want to delete the reservation for{" "}
+              <strong>{selectedReservation.resource_id?.name || "this resource"}</strong> on{" "}
+              {formatDateTime(selectedReservation.start_time)}?
+            </p>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={closeDeleteModal}>
+            Cancel
+          </Button>
+          {selectedResource && (
+            <Button variant="danger" onClick={handleDeleteResource}>
+              Delete Resource
+            </Button>
+          )}
+          {selectedReservation && (
+            <Button variant="danger" onClick={handleDeleteReservation}>
+              Delete Reservation
+            </Button>
+          )}
         </Modal.Footer>
       </Modal>
     </>

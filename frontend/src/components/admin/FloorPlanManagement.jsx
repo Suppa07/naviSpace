@@ -7,6 +7,7 @@ const FloorPlanManagement = () => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [selectedFloor, setSelectedFloor] = useState(null);
   const [showResourceModal, setShowResourceModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -174,6 +175,36 @@ const FloorPlanManagement = () => {
     });
   };
 
+  const openDeleteModal = (floor) => {
+    setSelectedFloor(floor);
+    setShowDeleteModal(true);
+  };
+
+  const closeDeleteModal = () => {
+    setShowDeleteModal(false);
+    setSelectedFloor(null);
+  };
+
+  const handleDeleteFloorPlan = async () => {
+    if (!selectedFloor) return;
+    
+    try {
+      await axios.delete(`${API_URL}admin/floorplan/${selectedFloor._id}`, {
+        withCredentials: true
+      });
+      
+      setSuccessMessage("Floor plan deleted successfully!");
+      setTimeout(() => setSuccessMessage(""), 3000);
+      
+      // Remove the deleted floor plan from the state
+      setFloorPlans(floorPlans.filter(f => f._id !== selectedFloor._id));
+      closeDeleteModal();
+    } catch (error) {
+      console.error("Error deleting floor plan:", error);
+      setError("Failed to delete floor plan. Please try again.");
+    }
+  };
+
   return (
     <>
       {successMessage && (
@@ -238,19 +269,27 @@ const FloorPlanManagement = () => {
                     />
                     <Card.Body>
                       <Card.Title>{plan.name}</Card.Title>
-                      <div className="d-flex mt-3">
+                      <div className="d-flex mt-3 flex-wrap">
                         <Button 
                           variant="outline-primary" 
-                          className="me-2"
+                          className="me-2 mb-2"
                           onClick={() => window.open(`${API_URL}${plan.layout_url}`, "_blank")}
                         >
                           <i className="bi bi-eye me-1"></i> View
                         </Button>
                         <Button 
                           variant="success"
+                          className="me-2 mb-2"
                           onClick={() => openAddResourceModal(plan)}
                         >
                           <i className="bi bi-plus-circle me-1"></i> Add Resource
+                        </Button>
+                        <Button 
+                          variant="danger"
+                          className="mb-2"
+                          onClick={() => openDeleteModal(plan)}
+                        >
+                          <i className="bi bi-trash me-1"></i> Delete
                         </Button>
                       </div>
                     </Card.Body>
@@ -403,6 +442,29 @@ const FloorPlanManagement = () => {
             disabled={!selectedPosition.x || !selectedPosition.y}
           >
             Add Resource
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Delete Floor Plan Modal */}
+      <Modal show={showDeleteModal} onHide={closeDeleteModal}>
+        <Modal.Header closeButton>
+          <Modal.Title>Delete Floor Plan</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {selectedFloor && (
+            <p>
+              Are you sure you want to delete the floor plan <strong>{selectedFloor.name}</strong>?
+              This will also delete all resources associated with this floor.
+            </p>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={closeDeleteModal}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={handleDeleteFloorPlan}>
+            Delete Floor Plan
           </Button>
         </Modal.Footer>
       </Modal>

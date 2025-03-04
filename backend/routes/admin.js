@@ -30,5 +30,8 @@ router.post("/floor-plan", authenticateAdmin, upload.single("floorPlan"), adminC
 router.post("/resources", authenticateAdmin, adminController.addResource);
 router.delete("/users/:user_id", authenticateAdmin, adminController.removeUser);
 router.get("/floorplans", authenticateAdmin, adminController.getAllFloorPlans);
+router.delete("/floorplan/:floor_id", authenticateAdmin, adminController.deleteFloorPlan);
+router.delete("/resource/:resource_id", authenticateAdmin, adminController.deleteResource);
+router.delete("/reservation/:reservation_id", authenticateAdmin, adminController.deleteReservation);
 
 module.exports = router;
