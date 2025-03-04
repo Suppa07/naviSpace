@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
-import { Card, Button, Form, Alert, Row, Col, Modal } from 'react-bootstrap';
+import { Card, Button, Form, Alert, Row, Col, Modal, Image } from 'react-bootstrap';
 
 const FloorPlanManagement = () => {
   const [floorPlans, setFloorPlans] = useState([]);
@@ -10,6 +10,9 @@ const FloorPlanManagement = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [showMapSelector, setShowMapSelector] = useState(false);
+  const [selectedPosition, setSelectedPosition] = useState({ x: null, y: null });
+  const imageRef = useRef(null);
   
   const [newResource, setNewResource] = useState({
     name: "",
@@ -80,13 +83,18 @@ const FloorPlanManagement = () => {
         return;
       }
       
+      if (!selectedPosition.x || !selectedPosition.y) {
+        setError("Please select a location on the map");
+        return;
+      }
+      
       const resourceData = {
         name: newResource.name,
         resource_type: newResource.type,
         floor_id: selectedFloor._id,
         location: [
-          parseFloat(newResource.location.x) || 0,
-          parseFloat(newResource.location.y) || 0,
+          parseFloat(selectedPosition.x) || 0,
+          parseFloat(selectedPosition.y) || 0,
         ],
         capacity: parseInt(newResource.capacity, 10) || 1,
         amenities: newResource.amenities
@@ -109,6 +117,7 @@ const FloorPlanManagement = () => {
         amenities: "",
       });
       
+      setSelectedPosition({ x: null, y: null });
       setShowResourceModal(false);
     } catch (err) {
       console.error("Error adding resource:", err);
@@ -131,7 +140,38 @@ const FloorPlanManagement = () => {
       capacity: "",
       amenities: "",
     });
+    setSelectedPosition({ x: null, y: null });
+    setShowMapSelector(false);
     setError("");
+  };
+
+  const openMapSelector = () => {
+    setShowMapSelector(true);
+  };
+
+  const handleMapClick = (e) => {
+    if (!imageRef.current) return;
+    
+    const rect = imageRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // Calculate percentage positions (for responsive positioning)
+    const xPercent = (x / rect.width) * 100;
+    const yPercent = (y / rect.height) * 100;
+    
+    setSelectedPosition({ 
+      x: xPercent.toFixed(2), 
+      y: yPercent.toFixed(2) 
+    });
+    
+    setNewResource({
+      ...newResource,
+      location: { 
+        x: xPercent.toFixed(2), 
+        y: yPercent.toFixed(2) 
+      }
+    });
   };
 
   return (
@@ -292,43 +332,76 @@ const FloorPlanManagement = () => {
               </Col>
             </Row>
             
-            <Row>
-              <Col md={6}>
-                <Form.Group className="mb-3">
-                  <Form.Label>X Coordinate</Form.Label>
-                  <Form.Control
-                    type="number"
-                    placeholder="X position on floor plan"
-                    value={newResource.location.x}
-                    onChange={(e) => setNewResource({
-                      ...newResource,
-                      location: { ...newResource.location, x: e.target.value },
-                    })}
+            <Form.Group className="mb-3">
+              <Form.Label>Location on Floor Plan</Form.Label>
+              <div className="d-flex align-items-center mb-2">
+                {selectedPosition.x && selectedPosition.y ? (
+                  <div className="me-3">
+                    <span className="badge bg-success">
+                      <i className="bi bi-geo-alt-fill me-1"></i>
+                      Position selected: X: {selectedPosition.x}%, Y: {selectedPosition.y}%
+                    </span>
+                  </div>
+                ) : (
+                  <div className="text-muted me-3">No position selected</div>
+                )}
+                <Button 
+                  variant="outline-primary" 
+                  size="sm"
+                  onClick={openMapSelector}
+                >
+                  {selectedPosition.x && selectedPosition.y ? 'Change Position' : 'Select Position on Map'}
+                </Button>
+              </div>
+            </Form.Group>
+            
+            {showMapSelector && selectedFloor && (
+              <div className="position-relative mb-4 border">
+                <div style={{ maxHeight: '500px', overflow: 'auto' }}>
+                  <Image 
+                    src={`${API_URL}${selectedFloor.layout_url}`} 
+                    alt={selectedFloor.name}
+                    fluid
+                    ref={imageRef}
+                    onClick={handleMapClick}
+                    style={{ cursor: 'crosshair' }}
                   />
-                </Form.Group>
-              </Col>
-              <Col md={6}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Y Coordinate</Form.Label>
-                  <Form.Control
-                    type="number"
-                    placeholder="Y position on floor plan"
-                    value={newResource.location.y}
-                    onChange={(e) => setNewResource({
-                      ...newResource,
-                      location: { ...newResource.location, y: e.target.value },
-                    })}
-                  />
-                </Form.Group>
-              </Col>
-            </Row>
+                  
+                  {/* Show marker at selected position */}
+                  {selectedPosition.x && selectedPosition.y && (
+                    <div 
+                      className="position-absolute"
+                      style={{
+                        left: `${selectedPosition.x}%`,
+                        top: `${selectedPosition.y}%`,
+                        transform: 'translate(-50%, -50%)',
+                        width: '20px',
+                        height: '20px',
+                        backgroundColor: 'red',
+                        borderRadius: '50%',
+                        border: '2px solid white',
+                        boxShadow: '0 0 5px rgba(0,0,0,0.5)',
+                        zIndex: 100
+                      }}
+                    />
+                  )}
+                </div>
+                <div className="bg-light p-2 text-center">
+                  <small className="text-muted">Click on the map to select the resource location</small>
+                </div>
+              </div>
+            )}
           </Form>
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={closeResourceModal}>
             Cancel
           </Button>
-          <Button variant="success" onClick={handleAddResource}>
+          <Button 
+            variant="success" 
+            onClick={handleAddResource}
+            disabled={!selectedPosition.x || !selectedPosition.y}
+          >
             Add Resource
           </Button>
         </Modal.Footer>

@@ -94,21 +94,36 @@ exports.addResource = async (req, res) => {
       return res.status(400).json({ error: "Invalid location format. Expected [x, y]." });
     }
 
+    // Validate that location contains numeric values
+    if (isNaN(parseFloat(location[0])) || isNaN(parseFloat(location[1]))) {
+      return res.status(400).json({ error: "Location coordinates must be numeric values." });
+    }
+
+    // Check if floor exists and belongs to the admin's company
+    const floor = await Floor.findById(floor_id);
+    if (!floor) {
+      return res.status(404).json({ error: "Floor not found." });
+    }
+    
+    if (floor.company_id.toString() !== req.user.company_id.toString()) {
+      return res.status(403).json({ error: "Cannot add resources to floors outside your company." });
+    }
+
     const newResource = new Resource({
       resource_type,
       floor_id,
       location,
       name,
-      capacity,
-      amenities,
+      capacity: parseInt(capacity) || 1,
+      amenities: Array.isArray(amenities) ? amenities : [],
       company_id: req.user.company_id,
     });
 
     await newResource.save();
-    res.json({ message: "Resource added successfully." });
+    res.json({ message: "Resource added successfully.", resource: newResource });
   } catch (err) {
     console.error(err);
-    res.status(500).send("Error adding resource");
+    res.status(500).send("Error adding resource: " + err.message);
   }
 };
 

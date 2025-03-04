@@ -1,24 +1,29 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { Card, Form, Row, Col, Button, Badge, Alert, Modal } from 'react-bootstrap';
+import { Card, Form, Row, Col, Button, Badge, Alert, Modal, Image, Tab, Tabs } from 'react-bootstrap';
 
 const ResourceBooking = () => {
   const [resources, setResources] = useState([]);
   const [favorites, setFavorites] = useState([]);
+  const [floorPlans, setFloorPlans] = useState([]);
   const [resourceType, setResourceType] = useState("desk");
   const [selectedResource, setSelectedResource] = useState(null);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [showModal, setShowModal] = useState(false);
+  const [showNavigationModal, setShowNavigationModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [selectedFloorPlan, setSelectedFloorPlan] = useState(null);
+  const [resourceLocation, setResourceLocation] = useState(null);
 
   const API_URL = import.meta.env.VITE_API_URL;
 
   useEffect(() => {
     fetchAvailability();
     fetchFavorites();
+    fetchFloorPlans();
   }, [resourceType]);
 
   const fetchAvailability = async () => {
@@ -46,6 +51,17 @@ const ResourceBooking = () => {
       setFavorites(response.data);
     } catch (error) {
       console.error("Error fetching favorites:", error);
+    }
+  };
+
+  const fetchFloorPlans = async () => {
+    try {
+      const response = await axios.get(`${API_URL}users/floorplans`, {
+        withCredentials: true,
+      });
+      setFloorPlans(response.data);
+    } catch (error) {
+      console.error("Error fetching floor plans:", error);
     }
   };
 
@@ -145,6 +161,39 @@ const ResourceBooking = () => {
     return favorites.some(fav => fav.resource_id?._id === resourceId);
   };
 
+  const openNavigationModal = async (resource) => {
+    setSelectedResource(resource);
+    setError("");
+    
+    try {
+      // Get detailed resource location information
+      const response = await axios.get(`${API_URL}users/resource-location/${resource._id}`, {
+        withCredentials: true
+      });
+      
+      console.log("Resource location response:", response.data);
+      
+      const resourceData = response.data.resource;
+      setResourceLocation(resourceData.location);
+      
+      // Find the floor plan for this resource
+      const floorPlan = floorPlans.find(plan => plan._id === resourceData.floor._id);
+      setSelectedFloorPlan(floorPlan);
+      
+      setShowNavigationModal(true);
+    } catch (error) {
+      console.error("Error fetching resource location:", error);
+      setError("Failed to load resource location information.");
+    }
+  };
+
+  const closeNavigationModal = () => {
+    setShowNavigationModal(false);
+    setSelectedResource(null);
+    setSelectedFloorPlan(null);
+    setResourceLocation(null);
+  };
+
   return (
     <>
       {successMessage && (
@@ -226,10 +275,10 @@ const ResourceBooking = () => {
                         </div>
                       )}
                       
-                      <div className="d-flex mt-3">
+                      <div className="d-flex mt-3 flex-wrap">
                         <Button 
                           variant="primary" 
-                          className="me-2"
+                          className="me-2 mb-2"
                           onClick={() => openBookingModal(resource)}
                         >
                           <i className="bi bi-calendar-plus me-1"></i> Book
@@ -238,11 +287,20 @@ const ResourceBooking = () => {
                         {!isResourceFavorited(resource._id) && (
                           <Button 
                             variant="outline-warning"
+                            className="me-2 mb-2"
                             onClick={() => markFavorite(resource._id)}
                           >
                             <i className="bi bi-star me-1"></i> Favorite
                           </Button>
                         )}
+                        
+                        <Button 
+                          variant="outline-info"
+                          className="mb-2"
+                          onClick={() => openNavigationModal(resource)}
+                        >
+                          <i className="bi bi-geo-alt me-1"></i> Navigate
+                        </Button>
                       </div>
                     </Card.Body>
                   </Card>
@@ -296,6 +354,96 @@ const ResourceBooking = () => {
           </Button>
           <Button variant="primary" onClick={bookResource}>
             Confirm Booking
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Navigation Modal */}
+      <Modal show={showNavigationModal} onHide={closeNavigationModal} size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>
+            {selectedResource && (
+              <>
+                Navigate to {selectedResource.name}
+                <div className="text-muted fs-6">
+                  {selectedResource.resource_type}
+                </div>
+              </>
+            )}
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {error && <Alert variant="danger">{error}</Alert>}
+          
+          {selectedFloorPlan && selectedResource && (
+            <div className="position-relative">
+              <Image 
+                src={`${API_URL}${selectedFloorPlan.layout_url}`} 
+                alt={selectedFloorPlan.name}
+                fluid
+              />
+              
+              {/* Show marker at resource position */}
+              {resourceLocation && (
+                <div 
+                  className="position-absolute"
+                  style={{
+                    left: `${resourceLocation[0]}%`,
+                    top: `${resourceLocation[1]}%`,
+                    transform: 'translate(-50%, -50%)',
+                    width: '30px',
+                    height: '30px',
+                    backgroundColor: 'red',
+                    borderRadius: '50%',
+                    border: '3px solid white',
+                    boxShadow: '0 0 10px rgba(0,0,0,0.5)',
+                    zIndex: 100,
+                    animation: 'pulse 1.5s infinite'
+                  }}
+                />
+              )}
+              
+              <style>
+                {`
+                  @keyframes pulse {
+                    0% {
+                      transform: translate(-50%, -50%) scale(1);
+                      opacity: 1;
+                    }
+                    50% {
+                      transform: translate(-50%, -50%) scale(1.2);
+                      opacity: 0.8;
+                    }
+                    100% {
+                      transform: translate(-50%, -50%) scale(1);
+                      opacity: 1;
+                    }
+                  }
+                `}
+              </style>
+            </div>
+          )}
+          
+          <div className="mt-3">
+            <h5>Location Details</h5>
+            <p>
+              <strong>Floor:</strong> {selectedFloorPlan?.name || 'Unknown'}
+            </p>
+            {selectedResource?.amenities && selectedResource.amenities.length > 0 && (
+              <div>
+                <strong>Amenities:</strong>
+                <ul>
+                  {selectedResource.amenities.map((amenity, index) => (
+                    <li key={index}>{amenity}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="primary" onClick={closeNavigationModal}>
+            Close
           </Button>
         </Modal.Footer>
       </Modal>
