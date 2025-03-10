@@ -4,8 +4,7 @@ const adminController = require("../controllers/adminController");
 const authenticateAdmin = require("../middleware/authenticateAdmin");
 const multer = require("multer");
 const path = require("path");
-const fs = require("fs"); // Add this line to import the fs module
-
+const fs = require("fs");
 
 const uploadDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -23,6 +22,9 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+router.post("/floor/base-location", authenticateAdmin, adminController.setBaseLocation);
+router.post("/floor/walkable-path", authenticateAdmin, adminController.addWalkablePath);
+router.post("/floor/transition-point", authenticateAdmin, adminController.addTransitionPoint);
 router.get("/users", authenticateAdmin, adminController.getAllUsers);
 router.get("/resources", authenticateAdmin, adminController.getAllResources);
 router.post("/reserve", authenticateAdmin, adminController.reserveResource);

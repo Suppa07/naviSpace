@@ -13,6 +13,16 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true // If you're using cookies or authentication
 }));
+
+// Add headers for image CORS
+app.use('/uploads', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+});
+
 require('dotenv').config();
 
 var indexRouter = require('./routes/index');
@@ -20,7 +30,6 @@ var authRouter = require('./routes/auth');
 const companyRoutes = require("./routes/company");
 const adminRoutes = require("./routes/admin");
 const userRoutes = require("./routes/user");
-
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));

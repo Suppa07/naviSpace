@@ -1,36 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
-import {
-  Card,
-  Form,
-  Button,
-  Alert,
-  Row,
-  Col,
-  Badge,
-  Modal,
-  Image,
-} from "react-bootstrap";
-import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
-import format from 'date-fns/format';
-import parse from 'date-fns/parse';
-import startOfWeek from 'date-fns/startOfWeek';
-import getDay from 'date-fns/getDay';
-import enUS from 'date-fns/locale/en-US';
-import 'react-big-calendar/lib/css/react-big-calendar.css';
-import * as PF from "pathfinding";
-
-const locales = {
-  'en-US': enUS,
-};
-
-const localizer = dateFnsLocalizer({
-  format,
-  parse,
-  startOfWeek,
-  getDay,
-  locales,
-});
+import { Card, Form, Button, Alert, Row, Col, Badge, Modal, Image } from 'react-bootstrap';
+import * as PF from 'pathfinding';
 
 const ResourceBooking = () => {
   const [resources, setResources] = useState([]);
@@ -51,8 +22,6 @@ const ResourceBooking = () => {
   const [navigationPath, setNavigationPath] = useState(null);
   const canvasRef = useRef(null);
   const [imageLoaded, setImageLoaded] = useState(false);
-  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
-  const [calendarEvents, setCalendarEvents] = useState([]);
 
   const API_URL = import.meta.env.VITE_API_URL;
 
@@ -67,214 +36,125 @@ const ResourceBooking = () => {
   }, [userLocation, selectedFloorPlan]);
 
   useEffect(() => {
-    if (
-      userRelativePosition &&
-      resourceLocation &&
-      imageLoaded &&
-      imageSize.width > 0 &&
-      selectedFloorPlan?.realx &&
-      selectedFloorPlan?.realy
-    ) {
+    if (userRelativePosition && resourceLocation && imageLoaded) {
       calculatePath();
     }
-  }, [userRelativePosition, resourceLocation, imageLoaded, imageSize]);
-
-  useEffect(() => {
-    if (selectedResource && reservations) {
-      const events = reservations
-        .filter(res => res.resource_id._id === selectedResource._id)
-        .map(res => ({
-          title: 'Reserved',
-          start: new Date(res.start_time),
-          end: new Date(res.end_time),
-          allDay: false,
-          resource: res.resource_id,
-        }));
-      setCalendarEvents(events);
-    }
-  }, [selectedResource, reservations]);
-
-  const eventStyleGetter = (event) => {
-    const style = {
-      backgroundColor: '#dc3545',
-      borderRadius: '5px',
-      opacity: 0.8,
-      color: 'white',
-      border: 'none',
-      display: 'block',
-    };
-    return { style };
-  };
-
-  const slotPropGetter = (date) => {
-    const isReserved = calendarEvents.some(event => 
-      date >= event.start && date <= event.end
-    );
-    
-    return {
-      className: isReserved ? 'reserved-slot' : 'available-slot',
-      style: {
-        backgroundColor: isReserved ? '#ffebee' : '#e8f5e9',
-      }
-    };
-  };
-
-  const handleSelectSlot = ({ start, end }) => {
-    const now = new Date();
-    if (start < now) {
-      setError("Cannot book slots in the past");
-      return;
-    }
-
-    const isSlotReserved = calendarEvents.some(event => 
-      (start >= event.start && start < event.end) ||
-      (end > event.start && end <= event.end)
-    );
-
-    if (isSlotReserved) {
-      setError("This time slot is already reserved");
-      return;
-    }
-
-    setStartTime(format(start, "yyyy-MM-dd'T'HH:mm"));
-    setEndTime(format(end, "yyyy-MM-dd'T'HH:mm"));
-  };
-
-  const handleImageLoad = (event) => {
-    setImageSize({
-      width: event.target.naturalWidth,
-      height: event.target.naturalHeight,
-    });
-    setImageLoaded(true);
-  };
+  }, [userRelativePosition, resourceLocation, imageLoaded]);
 
   const calculatePath = async () => {
     if (!canvasRef.current || !selectedFloorPlan) return;
 
     try {
-      const img = document.createElement("img");
-      img.crossOrigin = "anonymous";
-
+      // Create a new image and load it
+      const img = new Image();
+      img.crossOrigin = "anonymous"; // Enable CORS
+      
+      // Wait for image to load
       await new Promise((resolve, reject) => {
         img.onload = resolve;
         img.onerror = reject;
-        img.src = selectedFloorPlan.layout_url;
+        img.src = `${API_URL}${selectedFloorPlan.layout_url}`;
       });
 
-      const offscreenCanvas = document.createElement("canvas");
-      const ctx = offscreenCanvas.getContext("2d");
-
-      const GRID_SIZE = 100;
-      offscreenCanvas.width = GRID_SIZE;
-      offscreenCanvas.height = GRID_SIZE;
-
-      ctx.drawImage(img, 0, 0, GRID_SIZE, GRID_SIZE);
-
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      // Set canvas size to match image
+      canvas.width = img.width;
+      canvas.height = img.height;
+      
+      // Draw image to canvas
+      ctx.drawImage(img, 0, 0);
+      
       try {
-        const imageData = ctx.getImageData(0, 0, GRID_SIZE, GRID_SIZE);
+        // Get image data
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageData.data;
-
-        const grid = new PF.Grid(GRID_SIZE, GRID_SIZE);
-
-        for (let y = 0; y < GRID_SIZE; y++) {
-          for (let x = 0; x < GRID_SIZE; x++) {
-            const idx = (y * GRID_SIZE + x) * 4;
-            const isWalkable =
-              data[idx] > 200 && data[idx + 1] > 200 && data[idx + 2] > 200;
-            grid.setWalkableAt(x, y, isWalkable);
+        
+        // Create grid for pathfinding
+        const grid = new PF.Grid(canvas.width, canvas.height);
+        
+        // Mark obstacles (black pixels) as unwalkable
+        for (let y = 0; y < canvas.height; y++) {
+          for (let x = 0; x < canvas.width; x++) {
+            const idx = (y * canvas.width + x) * 4;
+            const isBlack = data[idx] < 50 && data[idx + 1] < 50 && data[idx + 2] < 50;
+            if (isBlack) {
+              grid.setWalkableAt(x, y, false);
+            }
           }
         }
 
-        const startX = Math.min(
-          Math.max(Math.floor((userRelativePosition[0] / 100) * GRID_SIZE), 0),
-          GRID_SIZE - 1
-        );
-        const startY = Math.min(
-          Math.max(Math.floor((userRelativePosition[1] / 100) * GRID_SIZE), 0),
-          GRID_SIZE - 1
-        );
-        const endX = Math.min(
-          Math.max(Math.floor((resourceLocation[0] / 100) * GRID_SIZE), 0),
-          GRID_SIZE - 1
-        );
-        const endY = Math.min(
-          Math.max(Math.floor((resourceLocation[1] / 100) * GRID_SIZE), 0),
-          GRID_SIZE - 1
-        );
+        // Convert percentage positions to pixel coordinates
+        const startX = Math.floor((userRelativePosition[0] / 100) * canvas.width);
+        const startY = Math.floor((userRelativePosition[1] / 100) * canvas.height);
+        const endX = Math.floor((resourceLocation[0] / 100) * canvas.width);
+        const endY = Math.floor((resourceLocation[1] / 100) * canvas.height);
 
-        grid.setWalkableAt(startX, startY, true);
-        grid.setWalkableAt(endX, endY, true);
-
+        // Find path
         const finder = new PF.AStarFinder({
           allowDiagonal: true,
-          dontCrossCorners: true,
+          dontCrossCorners: true
         });
-
+        
         const path = finder.findPath(startX, startY, endX, endY, grid);
-
-        if (path.length > 0) {
-          const percentagePath = path.map(([x, y]) => [
-            (x / GRID_SIZE) * 100,
-            (y / GRID_SIZE) * 100,
-          ]);
-
-          setNavigationPath(percentagePath);
-          drawPath(percentagePath);
-        } else {
-          setNavigationPath(null);
-          drawPath([]);
-          console.log("No valid path found between the points");
-          setError("No valid path found between the points");
-        }
+        
+        // Convert path back to percentage coordinates
+        const percentagePath = path.map(([x, y]) => [
+          (x / canvas.width) * 100,
+          (y / canvas.height) * 100
+        ]);
+        
+        setNavigationPath(percentagePath);
+        drawPath(percentagePath);
       } catch (error) {
-        console.error("Error processing image data:", error);
-        setError("Failed to process floor plan for navigation");
+        console.error('Error processing image data:', error);
+        setError('Failed to process floor plan for navigation');
       }
     } catch (error) {
-      console.error("Error loading image:", error);
-      setError("Failed to load floor plan for navigation");
+      console.error('Error loading image:', error);
+      setError('Failed to load floor plan for navigation');
     }
   };
 
   const drawPath = (path) => {
-    if (!canvasRef.current) return;
+    if (!canvasRef.current || !path?.length) return;
 
     const canvas = canvasRef.current;
-    const container = canvas.parentElement;
-
-    canvas.width = container.offsetWidth;
-    canvas.height = container.offsetHeight;
-
-    const ctx = canvas.getContext("2d");
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+    
+    const ctx = canvas.getContext('2d');
     const { width, height } = canvas;
 
+    // Clear previous drawings
     ctx.clearRect(0, 0, width, height);
 
-    if (path.length > 0) {
-      ctx.beginPath();
-      ctx.strokeStyle = "#007bff";
-      ctx.lineWidth = 3;
+    // Draw path
+    ctx.beginPath();
+    ctx.strokeStyle = '#007bff';
+    ctx.lineWidth = 3;
 
-      path.forEach((point, index) => {
-        const [x, y] = point;
-        const canvasX = (x / 100) * width;
-        const canvasY = (y / 100) * height;
+    path.forEach((point, index) => {
+      const [x, y] = point;
+      const canvasX = (x / 100) * width;
+      const canvasY = (y / 100) * height;
 
-        if (index === 0) {
-          ctx.moveTo(canvasX, canvasY);
-        } else {
-          ctx.lineTo(canvasX, canvasY);
-        }
-      });
+      if (index === 0) {
+        ctx.moveTo(canvasX, canvasY);
+      } else {
+        ctx.lineTo(canvasX, canvasY);
+      }
+    });
 
-      ctx.stroke();
-    }
+    ctx.stroke();
 
+    // Draw markers
     if (userRelativePosition) {
-      drawMarker(ctx, userRelativePosition, "#28a745", "You are here");
+      drawMarker(ctx, userRelativePosition, '#28a745', 'You are here');
     }
     if (resourceLocation) {
-      drawMarker(ctx, resourceLocation, "#dc3545", "Destination");
+      drawMarker(ctx, resourceLocation, '#dc3545', 'Destination');
     }
   };
 
@@ -289,13 +169,13 @@ const ResourceBooking = () => {
     ctx.fill();
 
     ctx.beginPath();
-    ctx.fillStyle = "white";
+    ctx.fillStyle = 'white';
     ctx.arc(canvasX, canvasY, 4, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = "#000";
-    ctx.font = "14px Arial";
-    ctx.textAlign = "center";
+    ctx.fillStyle = '#000';
+    ctx.font = '14px Arial';
+    ctx.textAlign = 'center';
     ctx.fillText(label, canvasX, canvasY - 15);
   };
 
@@ -305,19 +185,12 @@ const ResourceBooking = () => {
         (position) => {
           setUserLocation({
             latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
+            longitude: position.coords.longitude
           });
         },
         (error) => {
           console.error("Error getting location:", error);
-          setError(
-            "Failed to get your location. Please enable location services."
-          );
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
+          setError("Failed to get your location. Please enable location services.");
         }
       );
     } else {
@@ -328,30 +201,23 @@ const ResourceBooking = () => {
   const calculateUserRelativePosition = () => {
     if (!userLocation || !selectedFloorPlan?.base_location) return;
     const baseLocation = selectedFloorPlan.base_location;
-
+    
+    // Calculate differences in coordinates
     const latDiff = userLocation.latitude - baseLocation.latitude;
     const lngDiff = userLocation.longitude - baseLocation.longitude;
-
-    const metersPerLatDegree = 111111;
-    const metersPerLngDegree =
-      111111 * Math.cos(baseLocation.latitude * (Math.PI / 180));
-
-    const yMeters = latDiff * metersPerLatDegree;
-    const xMeters = lngDiff * metersPerLngDegree;
-
-    const relativeX = (xMeters / selectedFloorPlan.realx) * 100 + 50;
-    const relativeY = (yMeters / selectedFloorPlan.realy) * 100 + 50;
-
+    
+    // Convert to relative positions (50% is center of image)
+    // Adjust scale factor based on typical GPS coordinate differences
+    // 0.00001 degree is approximately 1.1 meters at the equator
+    const SCALE_FACTOR = 0.00001; // Adjust this value to fine-tune the scaling
+    
+    const relativeX = 50 + (lngDiff / SCALE_FACTOR);
+    const relativeY = 50 + (latDiff / SCALE_FACTOR);
+    
+    // Clamp values to stay within the floor plan bounds (0-100%)
     const clampedX = Math.max(0, Math.min(100, relativeX));
     const clampedY = Math.max(0, Math.min(100, relativeY));
-
-    console.log(
-      "Real dimensions:",
-      selectedFloorPlan.realx,
-      selectedFloorPlan.realy
-    );
-    console.log("Calculated position:", clampedX, clampedY);
-
+    
     setUserRelativePosition([clampedX, clampedY]);
   };
 
@@ -401,8 +267,7 @@ const ResourceBooking = () => {
       fetchAvailability();
     } catch (error) {
       setError(
-        error.response?.data?.error ||
-          "Error booking resource. Please try again."
+        error.response?.data?.error || "Error booking resource. Please try again."
       );
     }
   };
@@ -459,12 +324,9 @@ const ResourceBooking = () => {
     setError("");
     await getUserLocation();
     try {
-      const response = await axios.get(
-        `${API_URL}users/resource-location/${resource._id}`,
-        {
-          withCredentials: true,
-        }
-      );
+      const response = await axios.get(`${API_URL}users/resource-location/${resource._id}`, {
+        withCredentials: true
+      });
       const resourceData = response.data.resource;
       setResourceLocation(resourceData.location);
       setSelectedFloorPlan(resourceData.floor);
@@ -624,7 +486,8 @@ const ResourceBooking = () => {
           </Row>
         )}
 
-        <Modal show={showBookingModal} onHide={closeBookingModal} size="lg">
+        {/* Booking Modal */}
+        <Modal show={showBookingModal} onHide={closeBookingModal}>
           <Modal.Header closeButton>
             <Modal.Title>
               {selectedResource && (
@@ -640,48 +503,24 @@ const ResourceBooking = () => {
           <Modal.Body>
             {error && <Alert variant="danger">{error}</Alert>}
 
-            <div className="mb-4">
-              <Calendar
-                localizer={localizer}
-                events={calendarEvents}
-                startAccessor="start"
-                endAccessor="end"
-                style={{ height: 500 }}
-                selectable
-                onSelectSlot={handleSelectSlot}
-                eventPropGetter={eventStyleGetter}
-                slotPropGetter={slotPropGetter}
-                defaultView="week"
-                views={['week', 'day']}
-                min={new Date(0, 0, 0, 8, 0, 0)}
-                max={new Date(0, 0, 0, 20, 0, 0)}
-                step={30}
-              />
-            </div>
-
             <Form>
-              <Row>
-                <Col md={6}>
-                  <Form.Group className="mb-3">
-                    <Form.Label>Start Time</Form.Label>
-                    <Form.Control
-                      type="datetime-local"
-                      value={startTime}
-                      onChange={(e) => setStartTime(e.target.value)}
-                    />
-                  </Form.Group>
-                </Col>
-                <Col md={6}>
-                  <Form.Group className="mb-3">
-                    <Form.Label>End Time</Form.Label>
-                    <Form.Control
-                      type="datetime-local"
-                      value={endTime}
-                      onChange={(e) => setEndTime(e.target.value)}
-                    />
-                  </Form.Group>
-                </Col>
-              </Row>
+              <Form.Group className="mb-3">
+                <Form.Label>Start Time</Form.Label>
+                <Form.Control
+                  type="datetime-local"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                />
+              </Form.Group>
+
+              <Form.Group className="mb-3">
+                <Form.Label>End Time</Form.Label>
+                <Form.Control
+                  type="datetime-local"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                />
+              </Form.Group>
             </Form>
           </Modal.Body>
           <Modal.Footer>
@@ -694,11 +533,8 @@ const ResourceBooking = () => {
           </Modal.Footer>
         </Modal>
 
-        <Modal
-          show={showNavigationModal}
-          onHide={closeNavigationModal}
-          size="lg"
-        >
+        {/* Navigation Modal */}
+        <Modal show={showNavigationModal} onHide={closeNavigationModal} size="lg">
           <Modal.Header closeButton>
             <Modal.Title>
               {selectedResource && (
@@ -713,15 +549,14 @@ const ResourceBooking = () => {
           </Modal.Header>
           <Modal.Body>
             {error && <Alert variant="danger">{error}</Alert>}
-
+            
             {userLocation && (
               <Alert variant="info" className="mb-3">
                 <i className="bi bi-geo-alt me-2"></i>
-                Your current location: {userLocation.latitude.toFixed(6)},{" "}
-                {userLocation.longitude.toFixed(6)}
-                <Button
-                  variant="outline-primary"
-                  size="sm"
+                Your current location: {userLocation.latitude.toFixed(6)}, {userLocation.longitude.toFixed(6)}
+                <Button 
+                  variant="outline-primary" 
+                  size="sm" 
                   className="ms-3"
                   onClick={getUserLocation}
                 >
@@ -729,47 +564,44 @@ const ResourceBooking = () => {
                 </Button>
               </Alert>
             )}
-
+            
             {selectedFloorPlan && selectedResource && (
               <div className="position-relative">
-                <Image
-                  src={selectedFloorPlan.layout_url}
+                <Image 
+                  src={`${API_URL}${selectedFloorPlan.layout_url}`} 
                   alt={selectedFloorPlan.name}
                   className="img-fluid"
                   crossOrigin="anonymous"
-                  onLoad={handleImageLoad}
+                  onLoad={() => setImageLoaded(true)}
                 />
                 <canvas
                   ref={canvasRef}
                   className="position-absolute top-0 start-0 w-100 h-100"
-                  style={{ pointerEvents: "none" }}
+                  style={{ pointerEvents: 'none' }}
                 />
               </div>
             )}
-
+            
             <div className="mt-3">
               <h5>Location Details</h5>
               <p>
-                <strong>Floor:</strong> {selectedFloorPlan?.name || "Unknown"}
+                <strong>Floor:</strong> {selectedFloorPlan?.name || 'Unknown'}
               </p>
               {selectedFloorPlan?.base_location && (
                 <p>
-                  <strong>Base Location:</strong>{" "}
-                  {selectedFloorPlan.base_location.latitude.toFixed(6)},{" "}
-                  {selectedFloorPlan.base_location.longitude.toFixed(6)}
+                  <strong>Base Location:</strong> {selectedFloorPlan.base_location.latitude.toFixed(6)}, {selectedFloorPlan.base_location.longitude.toFixed(6)}
                 </p>
               )}
-              {selectedResource?.amenities &&
-                selectedResource.amenities.length > 0 && (
-                  <div>
-                    <strong>Amenities:</strong>
-                    <ul>
-                      {selectedResource.amenities.map((amenity, index) => (
-                        <li key={index}>{amenity}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+              {selectedResource?.amenities && selectedResource.amenities.length > 0 && (
+                <div>
+                  <strong>Amenities:</strong>
+                  <ul>
+                    {selectedResource.amenities.map((amenity, index) => (
+                      <li key={index}>{amenity}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </Modal.Body>
           <Modal.Footer>
@@ -779,21 +611,6 @@ const ResourceBooking = () => {
           </Modal.Footer>
         </Modal>
       </Card.Body>
-
-      <style>{`
-        .reserved-slot {
-          background-color: #ffebee !important;
-        }
-        .available-slot {
-          background-color: #e8f5e9 !important;
-        }
-        .rbc-event {
-          background-color: #dc3545 !important;
-        }
-        .rbc-today {
-          background-color: #e3f2fd !important;
-        }
-      `}</style>
     </Card>
   );
 };

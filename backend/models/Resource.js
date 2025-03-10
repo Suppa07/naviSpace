@@ -16,10 +16,19 @@ const ResourceSchema = new mongoose.Schema(
         message: props => `${props.value} is not a valid location! Expected [x, y] coordinates.`
       }
     },
-    capacity: { type: Number, default: 1 }, // Default 1 (for desks, parking)
-    amenities: [{ type: String }], // Array of amenities (e.g., "Projector", "Whiteboard")
+    capacity: { type: Number, default: 1 },
+    amenities: [{ type: String }],
+    category: { type: String }, // For search categorization
+    landmarks: [{ // Nearby landmarks for navigation
+      name: String,
+      direction: String, // e.g., "north", "left", etc.
+      distance: Number
+    }]
   },
   { timestamps: true }
 );
+
+// Index for location-based queries
+ResourceSchema.index({ location: '2d' });
 
 module.exports = mongoose.model("Resource", ResourceSchema);

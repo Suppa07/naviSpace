@@ -11,26 +11,7 @@ import {
   Modal,
   Image,
 } from "react-bootstrap";
-import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
-import format from 'date-fns/format';
-import parse from 'date-fns/parse';
-import startOfWeek from 'date-fns/startOfWeek';
-import getDay from 'date-fns/getDay';
-import enUS from 'date-fns/locale/en-US';
-import 'react-big-calendar/lib/css/react-big-calendar.css';
 import * as PF from "pathfinding";
-
-const locales = {
-  'en-US': enUS,
-};
-
-const localizer = dateFnsLocalizer({
-  format,
-  parse,
-  startOfWeek,
-  getDay,
-  locales,
-});
 
 const ResourceBooking = () => {
   const [resources, setResources] = useState([]);
@@ -52,7 +33,6 @@ const ResourceBooking = () => {
   const canvasRef = useRef(null);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
-  const [calendarEvents, setCalendarEvents] = useState([]);
 
   const API_URL = import.meta.env.VITE_API_URL;
 
@@ -62,6 +42,9 @@ const ResourceBooking = () => {
 
   useEffect(() => {
     if (userLocation && selectedFloorPlan?.base_location) {
+      console.log(userLocation);
+      console.log(selectedFloorPlan.base_location);
+      console.log(resourceLocation);
       calculateUserRelativePosition();
     }
   }, [userLocation, selectedFloorPlan]);
@@ -71,74 +54,11 @@ const ResourceBooking = () => {
       userRelativePosition &&
       resourceLocation &&
       imageLoaded &&
-      imageSize.width > 0 &&
-      selectedFloorPlan?.realx &&
-      selectedFloorPlan?.realy
+      imageSize.width > 0
     ) {
       calculatePath();
     }
   }, [userRelativePosition, resourceLocation, imageLoaded, imageSize]);
-
-  useEffect(() => {
-    if (selectedResource && reservations) {
-      const events = reservations
-        .filter(res => res.resource_id._id === selectedResource._id)
-        .map(res => ({
-          title: 'Reserved',
-          start: new Date(res.start_time),
-          end: new Date(res.end_time),
-          allDay: false,
-          resource: res.resource_id,
-        }));
-      setCalendarEvents(events);
-    }
-  }, [selectedResource, reservations]);
-
-  const eventStyleGetter = (event) => {
-    const style = {
-      backgroundColor: '#dc3545',
-      borderRadius: '5px',
-      opacity: 0.8,
-      color: 'white',
-      border: 'none',
-      display: 'block',
-    };
-    return { style };
-  };
-
-  const slotPropGetter = (date) => {
-    const isReserved = calendarEvents.some(event => 
-      date >= event.start && date <= event.end
-    );
-    
-    return {
-      className: isReserved ? 'reserved-slot' : 'available-slot',
-      style: {
-        backgroundColor: isReserved ? '#ffebee' : '#e8f5e9',
-      }
-    };
-  };
-
-  const handleSelectSlot = ({ start, end }) => {
-    const now = new Date();
-    if (start < now) {
-      setError("Cannot book slots in the past");
-      return;
-    }
-
-    const isSlotReserved = calendarEvents.some(event => 
-      (start >= event.start && start < event.end) ||
-      (end > event.start && end <= event.end)
-    );
-
-    if (isSlotReserved) {
-      setError("This time slot is already reserved");
-      return;
-    }
-
-    setStartTime(format(start, "yyyy-MM-dd'T'HH:mm"));
-    setEndTime(format(end, "yyyy-MM-dd'T'HH:mm"));
-  };
 
   const handleImageLoad = (event) => {
     setImageSize({
@@ -149,7 +69,7 @@ const ResourceBooking = () => {
   };
 
   const calculatePath = async () => {
-    if (!canvasRef.current || !selectedFloorPlan) return;
+    if (!canvasRef.current || !selectedFloorPlan || !imageSize.width) return;
 
     try {
       const img = document.createElement("img");
@@ -158,12 +78,13 @@ const ResourceBooking = () => {
       await new Promise((resolve, reject) => {
         img.onload = resolve;
         img.onerror = reject;
-        img.src = selectedFloorPlan.layout_url;
+        img.src = `${API_URL}${selectedFloorPlan.layout_url}`;
       });
 
       const offscreenCanvas = document.createElement("canvas");
       const ctx = offscreenCanvas.getContext("2d");
 
+      // Use a smaller grid size for better performance
       const GRID_SIZE = 100;
       offscreenCanvas.width = GRID_SIZE;
       offscreenCanvas.height = GRID_SIZE;
@@ -176,6 +97,7 @@ const ResourceBooking = () => {
 
         const grid = new PF.Grid(GRID_SIZE, GRID_SIZE);
 
+        // Mark walkable areas
         for (let y = 0; y < GRID_SIZE; y++) {
           for (let x = 0; x < GRID_SIZE; x++) {
             const idx = (y * GRID_SIZE + x) * 4;
@@ -185,6 +107,7 @@ const ResourceBooking = () => {
           }
         }
 
+        // Convert percentage coordinates to grid coordinates
         const startX = Math.min(
           Math.max(Math.floor((userRelativePosition[0] / 100) * GRID_SIZE), 0),
           GRID_SIZE - 1
@@ -202,6 +125,7 @@ const ResourceBooking = () => {
           GRID_SIZE - 1
         );
 
+        // Ensure start and end points are walkable
         grid.setWalkableAt(startX, startY, true);
         grid.setWalkableAt(endX, endY, true);
 
@@ -238,6 +162,14 @@ const ResourceBooking = () => {
 
   const drawPath = (path) => {
     if (!canvasRef.current) return;
+    // if(!path?.length) {
+    //   if (userRelativePosition) {
+    //     drawMarker(ctx, userRelativePosition, '#28a745', 'You are here');
+    //   }
+    //   if (resourceLocation) {
+    //     drawMarker(ctx, resourceLocation, '#dc3545', 'Destination');
+    //   }
+    // };
 
     const canvas = canvasRef.current;
     const container = canvas.parentElement;
@@ -250,25 +182,23 @@ const ResourceBooking = () => {
 
     ctx.clearRect(0, 0, width, height);
 
-    if (path.length > 0) {
-      ctx.beginPath();
-      ctx.strokeStyle = "#007bff";
-      ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.strokeStyle = "#007bff";
+    ctx.lineWidth = 3;
 
-      path.forEach((point, index) => {
-        const [x, y] = point;
-        const canvasX = (x / 100) * width;
-        const canvasY = (y / 100) * height;
+    path.forEach((point, index) => {
+      const [x, y] = point;
+      const canvasX = (x / 100) * width;
+      const canvasY = (y / 100) * height;
 
-        if (index === 0) {
-          ctx.moveTo(canvasX, canvasY);
-        } else {
-          ctx.lineTo(canvasX, canvasY);
-        }
-      });
+      if (index === 0) {
+        ctx.moveTo(canvasX, canvasY);
+      } else {
+        ctx.lineTo(canvasX, canvasY);
+      }
+    });
 
-      ctx.stroke();
-    }
+    ctx.stroke();
 
     if (userRelativePosition) {
       drawMarker(ctx, userRelativePosition, "#28a745", "You are here");
@@ -300,6 +230,7 @@ const ResourceBooking = () => {
   };
 
   const getUserLocation = () => {
+    console.log("object")
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -315,9 +246,9 @@ const ResourceBooking = () => {
           );
         },
         {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
+          enableHighAccuracy: true, // Forces GPS instead of WiFi/Cell tower
+          timeout: 10000, // Wait up to 10 seconds for better accuracy
+          maximumAge: 0, // Always fetch fresh data
         }
       );
     } else {
@@ -332,26 +263,14 @@ const ResourceBooking = () => {
     const latDiff = userLocation.latitude - baseLocation.latitude;
     const lngDiff = userLocation.longitude - baseLocation.longitude;
 
-    const metersPerLatDegree = 111111;
-    const metersPerLngDegree =
-      111111 * Math.cos(baseLocation.latitude * (Math.PI / 180));
+    const SCALE_FACTOR = 0.00001;
 
-    const yMeters = latDiff * metersPerLatDegree;
-    const xMeters = lngDiff * metersPerLngDegree;
-
-    const relativeX = (xMeters / selectedFloorPlan.realx) * 100 + 50;
-    const relativeY = (yMeters / selectedFloorPlan.realy) * 100 + 50;
+    const relativeX = 50 + lngDiff / SCALE_FACTOR;
+    const relativeY = 50 + latDiff / SCALE_FACTOR;
 
     const clampedX = Math.max(0, Math.min(100, relativeX));
     const clampedY = Math.max(0, Math.min(100, relativeY));
-
-    console.log(
-      "Real dimensions:",
-      selectedFloorPlan.realx,
-      selectedFloorPlan.realy
-    );
-    console.log("Calculated position:", clampedX, clampedY);
-
+    console.log(relativeX, relativeY);
     setUserRelativePosition([clampedX, clampedY]);
   };
 
@@ -624,7 +543,7 @@ const ResourceBooking = () => {
           </Row>
         )}
 
-        <Modal show={showBookingModal} onHide={closeBookingModal} size="lg">
+        <Modal show={showBookingModal} onHide={closeBookingModal}>
           <Modal.Header closeButton>
             <Modal.Title>
               {selectedResource && (
@@ -640,48 +559,24 @@ const ResourceBooking = () => {
           <Modal.Body>
             {error && <Alert variant="danger">{error}</Alert>}
 
-            <div className="mb-4">
-              <Calendar
-                localizer={localizer}
-                events={calendarEvents}
-                startAccessor="start"
-                endAccessor="end"
-                style={{ height: 500 }}
-                selectable
-                onSelectSlot={handleSelectSlot}
-                eventPropGetter={eventStyleGetter}
-                slotPropGetter={slotPropGetter}
-                defaultView="week"
-                views={['week', 'day']}
-                min={new Date(0, 0, 0, 8, 0, 0)}
-                max={new Date(0, 0, 0, 20, 0, 0)}
-                step={30}
-              />
-            </div>
-
             <Form>
-              <Row>
-                <Col md={6}>
-                  <Form.Group className="mb-3">
-                    <Form.Label>Start Time</Form.Label>
-                    <Form.Control
-                      type="datetime-local"
-                      value={startTime}
-                      onChange={(e) => setStartTime(e.target.value)}
-                    />
-                  </Form.Group>
-                </Col>
-                <Col md={6}>
-                  <Form.Group className="mb-3">
-                    <Form.Label>End Time</Form.Label>
-                    <Form.Control
-                      type="datetime-local"
-                      value={endTime}
-                      onChange={(e) => setEndTime(e.target.value)}
-                    />
-                  </Form.Group>
-                </Col>
-              </Row>
+              <Form.Group className="mb-3">
+                <Form.Label>Start Time</Form.Label>
+                <Form.Control
+                  type="datetime-local"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                />
+              </Form.Group>
+
+              <Form.Group className="mb-3">
+                <Form.Label>End Time</Form.Label>
+                <Form.Control
+                  type="datetime-local"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                />
+              </Form.Group>
             </Form>
           </Modal.Body>
           <Modal.Footer>
@@ -733,7 +628,7 @@ const ResourceBooking = () => {
             {selectedFloorPlan && selectedResource && (
               <div className="position-relative">
                 <Image
-                  src={selectedFloorPlan.layout_url}
+                  src={`${API_URL}${selectedFloorPlan.layout_url}`}
                   alt={selectedFloorPlan.name}
                   className="img-fluid"
                   crossOrigin="anonymous"
@@ -779,21 +674,6 @@ const ResourceBooking = () => {
           </Modal.Footer>
         </Modal>
       </Card.Body>
-
-      <style>{`
-        .reserved-slot {
-          background-color: #ffebee !important;
-        }
-        .available-slot {
-          background-color: #e8f5e9 !important;
-        }
-        .rbc-event {
-          background-color: #dc3545 !important;
-        }
-        .rbc-today {
-          background-color: #e3f2fd !important;
-        }
-      `}</style>
     </Card>
   );
 };

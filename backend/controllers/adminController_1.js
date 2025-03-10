@@ -4,11 +4,7 @@ const Resource = require("../models/Resource");
 const Reservation = require("../models/Reservation");
 const Floor = require("../models/Floor");
 const Company = require("../models/Company");
-const {
-  uploadFileToS3,
-  createGetObjectPreSignedURL,
-  deleteObjectFromS3,
-} = require("./s3");
+const fs = require("fs");
 const path = require("path");
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -42,67 +38,50 @@ exports.getAllResources = async (req, res) => {
 
 exports.reserveResource = async (req, res) => {
   const { resource_id, user_id, start_time, end_time } = req.body;
-  const session = await Reservation.startSession();
+
   try {
-    await session.withTransaction(async () => {
-      const user = await User.findById(user_id, { session });
-      const resource = await Resource.findById(resource_id, { session });
+    const user = await User.findById(user_id);
+    const resource = await Resource.findById(resource_id);
 
-      if (!user || !resource) throw new Error("User or Resource not found.");
-      if (user.company_id.toString() !== req.user.company_id.toString()) {
-        throw new Error("Cannot reserve for users outside your company.");
-      }
+    if (!user || !resource)
+      return res.status(404).send("User or Resource not found.");
+    if (user.company_id.toString() !== req.user.company_id.toString()) {
+      return res
+        .status(403)
+        .send("Cannot reserve for users outside your company.");
+    }
 
-      const newReservation = new Reservation({
-        resource_id,
-        start_time,
-        end_time,
-        participants: [user_id],
-        resource_type: await Resource.findById(resource_id).select(
-          "resource_type",
-          { session }
-        ),
-        is_fixed: false,
-      });
-
-      await newReservation.save({ session });
+    const newReservation = new Reservation({
+      resource_id,
+      start_time,
+      end_time,
+      participants: [user_id],
+      resource_type: await Resource.findById(resource_id).select(
+        "resource_type"
+      ),
+      is_fixed: false,
     });
-    await session.commitTransaction();
+
+    await newReservation.save();
     res.json({ message: "Resource reserved successfully." });
   } catch (err) {
-    await session.abortTransaction();
     console.error(err);
     res.status(500).send("Error reserving resource.");
-  } finally {
-    await session.endSession();
   }
 };
 exports.uploadFloorPlan = async (req, res) => {
   const { name } = req.body;
-  const file = req.file;
+  const filePath = req.file ? req.file.path : null;
 
-  if (!file) {
+  if (!filePath) {
     return res.status(400).send("File upload failed.");
   }
-  console.log(file);
 
   try {
-    // Generate a unique key for S3
-    const key = `floorplans/${Date.now()}-${path.basename(file.originalname)}`;
-
-    // Upload to S3
-    console.log(file.path);
-    const uploadResult = await uploadFileToS3(file, key);
-
-    if (uploadResult.error) {
-      throw new Error("Failed to upload to S3");
-    }
-
-    // Create floor plan record with S3 key
     const newFloor = new Floor({
       company_id: req.user.company_id,
       name,
-      layout_url: key,
+      layout_url: `uploads/${req.file.filename}`,
       base_location: {
         latitude: 0,
         longitude: 0,
@@ -115,13 +94,12 @@ exports.uploadFloorPlan = async (req, res) => {
     });
 
     await newFloor.save();
-    res.json({ message: "Floor plan uploaded successfully.", key });
+    res.json({ message: "Floor plan uploaded successfully.", filePath });
   } catch (err) {
     console.error(err);
     res.status(500).send("Error uploading floor plan.");
   }
 };
-
 exports.addResource = async (req, res) => {
   const { resource_type, floor_id, location, name, capacity, amenities } =
     req.body;
@@ -133,21 +111,25 @@ exports.addResource = async (req, res) => {
         .json({ error: "Invalid location format. Expected [x, y]." });
     }
 
+    // Validate that location contains numeric values
     if (isNaN(parseFloat(location[0])) || isNaN(parseFloat(location[1]))) {
       return res
         .status(400)
         .json({ error: "Location coordinates must be numeric values." });
     }
 
+    // Check if floor exists and belongs to the admin's company
     const floor = await Floor.findById(floor_id);
     if (!floor) {
       return res.status(404).json({ error: "Floor not found." });
     }
 
     if (floor.company_id.toString() !== req.user.company_id.toString()) {
-      return res.status(403).json({
-        error: "Cannot add resources to floors outside your company.",
-      });
+      return res
+        .status(403)
+        .json({
+          error: "Cannot add resources to floors outside your company.",
+        });
     }
 
     const newResource = new Resource({
@@ -192,53 +174,10 @@ exports.removeUser = async (req, res) => {
 exports.getAllFloorPlans = async (req, res) => {
   try {
     const floors = await Floor.find({ company_id: req.user.company_id });
-
-    // Generate presigned URLs for each floor plan
-    const floorsWithUrls = await Promise.all(
-      floors.map(async (floor) => {
-        const { s3Response: presignedUrl, error } =
-          await createGetObjectPreSignedURL(floor.layout_url);
-        return {
-          ...floor.toObject(),
-          layout_url: error ? null : presignedUrl,
-        };
-      })
-    );
-
-    res.json(floorsWithUrls);
+    res.json(floors);
   } catch (err) {
     console.error(err);
     res.status(500).send("Error fetching floor plans.");
-  }
-};
-
-exports.deleteFloorPlan = async (req, res) => {
-  try {
-    const floor = await Floor.findById(req.params.floor_id);
-
-    if (!floor) return res.status(404).send("Floor plan not found.");
-    if (floor.company_id.toString() !== req.user.company_id.toString()) {
-      return res
-        .status(403)
-        .send("Cannot delete floor plans outside your company.");
-    }
-
-    // Delete from S3
-    const { error } = await deleteObjectFromS3(floor.layout_url);
-    if (error) {
-      console.error("Error deleting from S3:", error);
-    }
-
-    const resources = await Resource.find({ floor_id: floor._id });
-    await Resource.deleteMany({ floor_id: floor._id });
-    await Reservation.deleteMany({
-      resource_id: { $in: resources.map((r) => r._id) },
-    });
-    await Floor.deleteOne({ _id: floor._id });
-    res.json({ message: "Floor plan deleted successfully." });
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Error deleting floor plan.");
   }
 };
 
@@ -255,11 +194,31 @@ exports.deleteResource = async (req, res) => {
 
     await Resource.deleteOne({ _id: resource._id });
     await Reservation.deleteMany({ resource_id: resource._id });
-    await Favourite.deleteMany({ resource_id: resource._id });
     res.json({ message: "Resource removed successfully." });
   } catch (err) {
     console.error(err);
     res.status(500).send("Error removing resource.");
+  }
+};
+exports.deleteFloorPlan = async (req, res) => {
+  try {
+    const floor = await Floor.findById(req.params.floor_id);
+
+    if (!floor) return res.status(404).send("Floor plan not found.");
+    if (floor.company_id.toString() !== req.user.company_id.toString()) {
+      return res
+        .status(403)
+        .send("Cannot delete floor plans outside your company.");
+    }
+
+    const resources = await Resource.find({ floor_id: floor._id });
+    await Resource.deleteMany({ floor_id: floor._id });
+    await Reservation.deleteMany({ resource_id: { $in: resources.map((r) => r._id) } });
+    await Floor.deleteOne({ _id: floor._id });
+    res.json({ message: "Floor plan deleted successfully." });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Error deleting floor plan.");
   }
 };
 
