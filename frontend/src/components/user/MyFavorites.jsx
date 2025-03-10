@@ -1,26 +1,47 @@
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
-import { Card, Row, Col, Button, Alert, Modal, Form, Image, Badge } from 'react-bootstrap';
-import * as PF from 'pathfinding';
+import { Card, Form, Button, Alert, Row, Col, Badge, Modal, Image } from 'react-bootstrap';
+import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
+import format from 'date-fns/format';
+import parse from 'date-fns/parse';
+import startOfWeek from 'date-fns/startOfWeek';
+import getDay from 'date-fns/getDay';
+import enUS from 'date-fns/locale/en-US';
+import 'react-big-calendar/lib/css/react-big-calendar.css';
+import * as PF from "pathfinding";
+
+const locales = {
+  'en-US': enUS,
+};
+
+const localizer = dateFnsLocalizer({
+  format,
+  parse,
+  startOfWeek,
+  getDay,
+  locales,
+});
 
 const MyFavorites = () => {
   const [favorites, setFavorites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [selectedResource, setSelectedResource] = useState(null);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [showNavigationModal, setShowNavigationModal] = useState(false);
-  const [successMessage, setSuccessMessage] = useState("");
-  const [selectedFloorPlan, setSelectedFloorPlan] = useState(null);
   const [resourceLocation, setResourceLocation] = useState(null);
+  const [selectedFloorPlan, setSelectedFloorPlan] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
   const [userRelativePosition, setUserRelativePosition] = useState(null);
   const [navigationPath, setNavigationPath] = useState(null);
   const canvasRef = useRef(null);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const [calendarEvents, setCalendarEvents] = useState([]);
+  const [reservations, setReservations] = useState([]);
 
   const API_URL = import.meta.env.VITE_API_URL;
 
@@ -46,6 +67,67 @@ const MyFavorites = () => {
       calculatePath();
     }
   }, [userRelativePosition, resourceLocation, imageLoaded, imageSize]);
+
+  useEffect(() => {
+    if (selectedResource) {
+      const events = reservations
+        .filter(res => res.resource_id._id === selectedResource._id)
+        .map(res => ({
+          title: 'Reserved',
+          start: new Date(res.start_time),
+          end: new Date(res.end_time),
+          allDay: false,
+          resource: res.resource_id,
+        }));
+      setCalendarEvents(events);
+    }
+  }, [selectedResource, reservations]);
+
+  const eventStyleGetter = (event) => {
+    const style = {
+      backgroundColor: '#dc3545',
+      borderRadius: '5px',
+      opacity: 0.8,
+      color: 'white',
+      border: 'none',
+      display: 'block',
+    };
+    return { style };
+  };
+
+  const slotPropGetter = (date) => {
+    const isReserved = calendarEvents.some(event => 
+      date >= event.start && date <= event.end
+    );
+    
+    return {
+      className: isReserved ? 'reserved-slot' : 'available-slot',
+      style: {
+        backgroundColor: isReserved ? '#ffebee' : '#e8f5e9',
+      }
+    };
+  };
+
+  const handleSelectSlot = ({ start, end }) => {
+    const now = new Date();
+    if (start < now) {
+      setError("Cannot book slots in the past");
+      return;
+    }
+
+    const isSlotReserved = calendarEvents.some(event => 
+      (start >= event.start && start < event.end) ||
+      (end > event.start && end <= event.end)
+    );
+
+    if (isSlotReserved) {
+      setError("This time slot is already reserved");
+      return;
+    }
+
+    setStartTime(format(start, "yyyy-MM-dd'T'HH:mm"));
+    setEndTime(format(end, "yyyy-MM-dd'T'HH:mm"));
+  };
 
   const handleImageLoad = (event) => {
     setImageSize({
@@ -206,29 +288,6 @@ const MyFavorites = () => {
     ctx.fillText(label, canvasX, canvasY - 15);
   };
 
-  const calculateUserRelativePosition = () => {
-    if (!userLocation || !selectedFloorPlan?.base_location) return;
-    const baseLocation = selectedFloorPlan.base_location;
-
-    const latDiff = userLocation.latitude - baseLocation.latitude;
-    const lngDiff = userLocation.longitude - baseLocation.longitude;
-
-    const metersPerLatDegree = 111111;
-    const metersPerLngDegree =
-      111111 * Math.cos(baseLocation.latitude * (Math.PI / 180));
-
-    const yMeters = latDiff * metersPerLatDegree;
-    const xMeters = lngDiff * metersPerLngDegree;
-
-    const relativeX = (xMeters / selectedFloorPlan.realx) * 100 + 50;
-    const relativeY = (yMeters / selectedFloorPlan.realy) * 100 + 50;
-
-    const clampedX = Math.max(0, Math.min(100, relativeX));
-    const clampedY = Math.max(0, Math.min(100, relativeY));
-
-    setUserRelativePosition([clampedX, clampedY]);
-  };
-
   const getUserLocation = () => {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
@@ -253,13 +312,39 @@ const MyFavorites = () => {
     }
   };
 
+  const calculateUserRelativePosition = () => {
+    if (!userLocation || !selectedFloorPlan?.base_location) return;
+    const baseLocation = selectedFloorPlan.base_location;
+
+    const latDiff = userLocation.latitude - baseLocation.latitude;
+    const lngDiff = userLocation.longitude - baseLocation.longitude;
+
+    const metersPerLatDegree = 111111;
+    const metersPerLngDegree =
+      111111 * Math.cos(baseLocation.latitude * (Math.PI / 180));
+
+    const yMeters = latDiff * metersPerLatDegree;
+    const xMeters = lngDiff * metersPerLngDegree;
+
+    const relativeX = (xMeters / selectedFloorPlan.realx) * 100 + 50;
+    const relativeY = (yMeters / selectedFloorPlan.realy) * 100 + 50;
+
+    const clampedX = Math.max(0, Math.min(100, relativeX));
+    const clampedY = Math.max(0, Math.min(100, relativeY));
+
+    setUserRelativePosition([clampedX, clampedY]);
+  };
+
   const fetchFavorites = async () => {
     setLoading(true);
     try {
-      const response = await axios.get(`${API_URL}users/favorites`, {
-        withCredentials: true,
-      });
-      setFavorites(response.data);
+      const [favoritesResponse, reservationsResponse] = await Promise.all([
+        axios.get(`${API_URL}users/favorites`, { withCredentials: true }),
+        axios.get(`${API_URL}users/reservations`, { withCredentials: true })
+      ]);
+      
+      setFavorites(favoritesResponse.data);
+      setReservations(reservationsResponse.data);
       setError("");
     } catch (error) {
       console.error("Error fetching favorites:", error);
@@ -269,24 +354,18 @@ const MyFavorites = () => {
     }
   };
 
-  const bookResource = async () => {
+  const handleBookResource = async () => {
     if (!startTime || !endTime) {
       setError("Please select both start and end times");
       return;
     }
-  
-    if (new Date(startTime).getTime() >= new Date(endTime).getTime()) {
+
+    if (new Date(startTime) >= new Date(endTime)) {
       setError("End time must be after start time");
       return;
     }
-  
-    if (!selectedResource || !selectedResource._id) {
-      setError("Invalid resource selected.");
-      return;
-    }
-  
+
     try {
-      setError("");
       await axios.post(
         `${API_URL}users/book`,
         {
@@ -296,16 +375,14 @@ const MyFavorites = () => {
         },
         { withCredentials: true }
       );
-  
+
       setSuccessMessage("Resource booked successfully!");
       setTimeout(() => setSuccessMessage(""), 3000);
-      fetchFavorites();
       closeModal();
+      fetchFavorites();
     } catch (error) {
-      console.log(error);
       setError(
-        error.response?.data?.error ||
-          "Error booking resource. Please try again."
+        error.response?.data?.error || "Error booking resource. Please try again."
       );
     }
   };
@@ -343,9 +420,12 @@ const MyFavorites = () => {
     setError("");
     await getUserLocation();
     try {
-      const response = await axios.get(`${API_URL}users/resource-location/${resource._id}`, {
-        withCredentials: true
-      });
+      const response = await axios.get(
+        `${API_URL}users/resource-location/${resource._id}`,
+        {
+          withCredentials: true,
+        }
+      );
       const resourceData = response.data.resource;
       setResourceLocation(resourceData.location);
       setSelectedFloorPlan(resourceData.floor);
@@ -363,7 +443,6 @@ const MyFavorites = () => {
     setResourceLocation(null);
     setUserRelativePosition(null);
     setImageLoaded(false);
-    setNavigationPath(null);
   };
 
   const getResourceTypeIcon = (type) => {
@@ -377,6 +456,16 @@ const MyFavorites = () => {
       default:
         return <i className="bi bi-building me-2"></i>;
     }
+  };
+
+  const isResourceInUse = (resourceId) => {
+    const now = new Date();
+    return reservations.some(
+      (reservation) =>
+        reservation.resource_id._id === resourceId &&
+        new Date(reservation.start_time) <= now &&
+        new Date(reservation.end_time) > now
+    );
   };
 
   return (
@@ -415,10 +504,19 @@ const MyFavorites = () => {
                       Type: {favorite.resource_type}
                     </Card.Subtitle>
 
+                    <div className="mb-3">
+                      {isResourceInUse(favorite.resource_id._id) ? (
+                        <Badge bg="danger">In Use</Badge>
+                      ) : (
+                        <Badge bg="success">Available</Badge>
+                      )}
+                    </div>
+
                     <div className="d-flex mt-3 flex-wrap gap-2">
                       <Button
                         variant="primary"
                         onClick={() => openBookingModal(favorite.resource_id)}
+                        disabled={isResourceInUse(favorite.resource_id._id)}
                       >
                         <i className="bi bi-calendar-plus me-1"></i> Book
                       </Button>
@@ -438,7 +536,7 @@ const MyFavorites = () => {
       </Card.Body>
 
       {/* Booking Modal */}
-      <Modal show={showModal} onHide={closeModal}>
+      <Modal show={showModal} onHide={closeModal} size="lg">
         <Modal.Header closeButton>
           <Modal.Title>
             {selectedResource && (
@@ -454,31 +552,55 @@ const MyFavorites = () => {
         <Modal.Body>
           {error && <Alert variant="danger">{error}</Alert>}
 
-          <Form>
-            <Form.Group className="mb-3">
-              <Form.Label>Start Time</Form.Label>
-              <Form.Control
-                type="datetime-local"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-              />
-            </Form.Group>
+          <div className="mb-4">
+            <Calendar
+              localizer={localizer}
+              events={calendarEvents}
+              startAccessor="start"
+              endAccessor="end"
+              style={{ height: 500 }}
+              selectable
+              onSelectSlot={handleSelectSlot}
+              eventPropGetter={eventStyleGetter}
+              slotPropGetter={slotPropGetter}
+              defaultView="week"
+              views={['week', 'day']}
+              min={new Date(0, 0, 0, 8, 0, 0)}
+              max={new Date(0, 0, 0, 20, 0, 0)}
+              step={30}
+            />
+          </div>
 
-            <Form.Group className="mb-3">
-              <Form.Label>End Time</Form.Label>
-              <Form.Control
-                type="datetime-local"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-              />
-            </Form.Group>
+          <Form>
+            <Row>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Start Time</Form.Label>
+                  <Form.Control
+                    type="datetime-local"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                  />
+                </Form.Group>
+              </Col>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>End Time</Form.Label>
+                  <Form.Control
+                    type="datetime-local"
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                  />
+                </Form.Group>
+              </Col>
+            </Row>
           </Form>
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={closeModal}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={bookResource}>
+          <Button variant="primary" onClick={handleBookResource}>
             Confirm Booking
           </Button>
         </Modal.Footer>
@@ -500,14 +622,15 @@ const MyFavorites = () => {
         </Modal.Header>
         <Modal.Body>
           {error && <Alert variant="danger">{error}</Alert>}
-          
+
           {userLocation && (
             <Alert variant="info" className="mb-3">
               <i className="bi bi-geo-alt me-2"></i>
-              Your current location: {userLocation.latitude.toFixed(6)}, {userLocation.longitude.toFixed(6)}
-              <Button 
-                variant="outline-primary" 
-                size="sm" 
+              Your current location: {userLocation.latitude.toFixed(6)},{" "}
+              {userLocation.longitude.toFixed(6)}
+              <Button
+                variant="outline-primary"
+                size="sm"
                 className="ms-3"
                 onClick={getUserLocation}
               >
@@ -515,10 +638,10 @@ const MyFavorites = () => {
               </Button>
             </Alert>
           )}
-          
+
           {selectedFloorPlan && selectedResource && (
             <div className="position-relative">
-              <Image 
+              <Image
                 src={selectedFloorPlan.layout_url}
                 alt={selectedFloorPlan.name}
                 className="img-fluid"
@@ -528,31 +651,34 @@ const MyFavorites = () => {
               <canvas
                 ref={canvasRef}
                 className="position-absolute top-0 start-0 w-100 h-100"
-                style={{ pointerEvents: 'none' }}
+                style={{ pointerEvents: "none" }}
               />
             </div>
           )}
-          
+
           <div className="mt-3">
             <h5>Location Details</h5>
             <p>
-              <strong>Floor:</strong> {selectedFloorPlan?.name || 'Unknown'}
+              <strong>Floor:</strong> {selectedFloorPlan?.name || "Unknown"}
             </p>
             {selectedFloorPlan?.base_location && (
               <p>
-                <strong>Base Location:</strong> {selectedFloorPlan.base_location.latitude.toFixed(6)}, {selectedFloorPlan.base_location.longitude.toFixed(6)}
+                <strong>Base Location:</strong>{" "}
+                {selectedFloorPlan.base_location.latitude.toFixed(6)},{" "}
+                {selectedFloorPlan.base_location.longitude.toFixed(6)}
               </p>
             )}
-            {selectedResource?.amenities && selectedResource.amenities.length > 0 && (
-              <div>
-                <strong>Amenities:</strong>
-                <ul>
-                  {selectedResource.amenities.map((amenity, index) => (
-                    <li key={index}>{amenity}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            {selectedResource?.amenities &&
+              selectedResource.amenities.length > 0 && (
+                <div>
+                  <strong>Amenities:</strong>
+                  <ul>
+                    {selectedResource.amenities.map((amenity, index) => (
+                      <li key={index}>{amenity}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
           </div>
         </Modal.Body>
         <Modal.Footer>
@@ -561,6 +687,21 @@ const MyFavorites = () => {
           </Button>
         </Modal.Footer>
       </Modal>
+
+      <style>{`
+        .reserved-slot {
+          background-color: #ffebee !important;
+        }
+        .available-slot {
+          background-color: #e8f5e9 !important;
+        }
+        .rbc-event {
+          background-color: #dc3545 !important;
+        }
+        .rbc-today {
+          background-color: #e3f2fd !important;
+        }
+      `}</style>
     </Card>
   );
 };

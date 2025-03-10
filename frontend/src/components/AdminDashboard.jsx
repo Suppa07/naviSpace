@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Container, Tab, Tabs, Alert } from 'react-bootstrap';
 import ResourceManagement from "./admin/ResourceManagement";
+import ReservationManagement from "./admin/ReservationManagement";
 import UserManagement from "./admin/UserManagement";
 import FloorPlanManagement from "./admin/FloorPlanManagement";
 
@@ -25,8 +26,12 @@ const AdminDashboard = () => {
       )}
       
       <Tabs defaultActiveKey="resources" className="mb-4">
-        <Tab eventKey="resources" title="Resources & Reservations">
+        <Tab eventKey="resources" title="Resources">
           <ResourceManagement />
+        </Tab>
+
+        <Tab eventKey="reservations" title="Reservations">
+          <ReservationManagement />
         </Tab>
         
         <Tab eventKey="users" title="Users">

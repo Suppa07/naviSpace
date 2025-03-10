@@ -60,76 +60,28 @@ exports.getAvailability = async (req, res) => {
   try {
     const companyId = await User.findOne({ _id: req.user.id }, "company_id");
     
-    let pipeline = [];
+    // Build search query
+    let searchQuery = {
+      resource_type: resourceType,
+      company_id: companyId.company_id
+    };
 
-    // Add search stage if search query exists
     if (search) {
-      pipeline.push({
-        $search: {
-          index: "resources_search",
-          compound: {
-            should: [
-              {
-                autocomplete: {
-                  query: search,
-                  path: "name",
-                  fuzzy: {
-                    maxEdits: 1
-                  }
-                }
-              },
-              {
-                autocomplete: {
-                  query: search,
-                  path: "amenities",
-                  fuzzy: {
-                    maxEdits: 1
-                  }
-                }
-              }
-            ]
-          }
-        }
-      });
+      searchQuery.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { 'amenities': { $regex: search, $options: 'i' } }
+      ];
     }
 
-    // Add match stage for resource type and company
-    pipeline.push({
-      $match: {
-        resource_type: resourceType,
-        company_id: companyId.company_id
-      }
-    });
+    // Get total count for pagination
+    const totalResources = await Resource.countDocuments(searchQuery);
 
-    // Add facet for pagination
-    pipeline.push({
-      $facet: {
-        metadata: [{ $count: "total" }],
-        resources: [
-          { $skip: skip },
-          { $limit: parseInt(limit) },
-          {
-            $lookup: {
-              from: "floors",
-              localField: "floor_id",
-              foreignField: "_id",
-              as: "floor_id"
-            }
-          },
-          {
-            $unwind: {
-              path: "$floor_id",
-              preserveNullAndEmptyArrays: true
-            }
-          }
-        ]
-      }
-    });
-
-    const [result] = await Resource.aggregate(pipeline);
-    
-    const resources = result.resources;
-    const totalResources = result.metadata[0]?.total || 0;
+    // Get paginated resources
+    const resources = await Resource.find(searchQuery)
+      .populate("floor_id", "name")
+      .skip(skip)
+      .limit(parseInt(limit))
+      .sort({ name: 1 });
 
     // Get reservations for these resources
     const reservations = await Reservation.find({
@@ -147,8 +99,8 @@ exports.getAvailability = async (req, res) => {
         hasMore: skip + resources.length < totalResources
       }
     });
-  } catch (error) {
-    console.error("Error fetching resources:", error);
+  } catch (err) {
+    console.error("Error fetching resources:", err);
     res.status(500).json({ error: "Server error" });
   }
 };
@@ -174,8 +126,8 @@ exports.markFavorite = async (req, res) => {
     await favorite.save();
 
     res.json({ message: "Resource marked as favorite" });
-  } catch (error) {
-    console.error(error);
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 };
@@ -191,8 +143,8 @@ exports.getFavorites = async (req, res) => {
     });
 
     res.json(favourites);
-  } catch (error) {
-    console.error(error);
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 };
@@ -211,8 +163,8 @@ exports.getUnexpiredReservations = async (req, res) => {
     });
 
     res.json(unexpiredReservations);
-  } catch (error) {
-    console.error(error);
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 };
@@ -220,9 +172,10 @@ exports.getUnexpiredReservations = async (req, res) => {
 exports.getPastReservations = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
-    const limit = 10;
+    const limit = 10; // Number of reservations per page
     const skipAmount = (page - 1) * limit;
 
+    // Calculate the date for one week ago from the current page
     const weeksToGoBack = page - 1;
     const endDate = new Date();
     endDate.setDate(endDate.getDate() - (7 * weeksToGoBack));
@@ -248,6 +201,7 @@ exports.getPastReservations = async (req, res) => {
       },
     });
 
+    // Check if there are more reservations
     const hasMore = await Reservation.exists({
       participants: req.user.id,
       end_time: { $lt: startDate }
@@ -258,8 +212,8 @@ exports.getPastReservations = async (req, res) => {
       hasMore: !!hasMore,
       currentPage: page
     });
-  } catch (error) {
-    console.error(error);
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 };
@@ -280,6 +234,7 @@ exports.getResourceLocation = async (req, res) => {
         .json({ error: "You don't have access to this resource" });
     }
 
+    // Get presigned URL for the floor plan
     const { s3Response: presignedUrl, error } =
       await createGetObjectPreSignedURL(resource.floor_id.layout_url);
     if (error) {
@@ -304,8 +259,8 @@ exports.getResourceLocation = async (req, res) => {
         },
       },
     });
-  } catch (error) {
-    console.error(error);
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 };
@@ -315,6 +270,7 @@ exports.getAllFloorPlans = async (req, res) => {
     const user = await User.findById(req.user.id);
     const floors = await Floor.find({ company_id: user.company_id });
 
+    // Generate presigned URLs for each floor plan
     const floorsWithUrls = await Promise.all(
       floors.map(async (floor) => {
         const { s3Response: presignedUrl, error } =
@@ -327,8 +283,8 @@ exports.getAllFloorPlans = async (req, res) => {
     );
 
     res.json(floorsWithUrls);
-  } catch (error) {
-    console.error(error);
+  } catch (err) {
+    console.error(err);
     res.status(500).send("Error fetching floor plans.");
   }
 };
@@ -352,32 +308,124 @@ exports.deleteReservation = async (req, res) => {
     await Reservation.findByIdAndDelete(reservationId);
 
     res.json({ message: "Reservation deleted successfully" });
-  } catch (error) {
-    console.error(error);
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 };
 
+exports.findPath = async (req, res) => {
+  const { start_point, end_point, start_floor, end_floor } = req.body;
 
+  try {
+    const startFloor = await Floor.findOne({
+      company_id: req.user.company_id,
+      floor_number: start_floor,
+    });
 
+    const endFloor = await Floor.findOne({
+      company_id: req.user.company_id,
+      floor_number: end_floor,
+    });
+
+    if (!startFloor || !endFloor) {
+      return res.status(404).json({ error: "Floor not found" });
+    }
+
+    let path = [];
+    let instructions = [];
+
+    if (start_floor === end_floor) {
+      const grid = createNavigationGrid(startFloor);
+      const finder = new PathFinding.AStarFinder({
+        allowDiagonal: true,
+        dontCrossCorners: true,
+      });
+
+      path = finder.findPath(
+        Math.round(start_point[0]),
+        Math.round(start_point[1]),
+        Math.round(end_point[0]),
+        Math.round(end_point[1]),
+        grid.clone()
+      );
+
+      instructions = generateInstructions(path, startFloor);
+    } else {
+      const { path: multiFloorPath, instructions: multiFloorInstructions } =
+        await calculateMultiFloorPath(
+          start_point,
+          end_point,
+          startFloor,
+          endFloor
+        );
+
+      path = multiFloorPath;
+      instructions = multiFloorInstructions;
+    }
+
+    res.json({
+      path,
+      instructions,
+      estimated_time: calculateEstimatedTime(path),
+      distance: calculateTotalDistance(path),
+    });
+  } catch (error) {
+    console.error("Error finding path:", error);
+    res.status(500).json({ error: "Failed to calculate path" });
+  }
+};
+
+exports.searchDestination = async (req, res) => {
+  const { query, type } = req.query;
+
+  try {
+    let searchQuery = {
+      company_id: req.user.company_id,
+    };
+
+    if (type) {
+      searchQuery.resource_type = type;
+    }
+
+    if (query) {
+      searchQuery.$or = [
+        { name: { $regex: query, $options: "i" } },
+        { category: { $regex: query, $options: "i" } },
+      ];
+    }
+
+    const resources = await Resource.find(searchQuery).populate(
+      "floor_id",
+      "name floor_number"
+    );
+
+    res.json(resources);
+  } catch (error) {
+    console.error("Error searching destinations:", error);
+    res.status(500).json({ error: "Failed to search destinations" });
+  }
+};
 
 exports.searchUserReservations = async (req, res) => {
   const { query } = req.query;
   const companyId = await User.findOne({ _id: req.user.id }, "company_id");
   console.log(companyId);
   try {
+    // Find user by username or email
     const user = await User.findOne({
       $or: [
         { username: { $regex: query, $options: "i" } },
         { email_id: { $regex: query, $options: "i" } },
       ],
-      company_id: companyId.company_id,
+      company_id: companyId.company_id, // Only search within same company
     });
 
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
+    // Find current active reservation
     const now = new Date();
     const reservation = await Reservation.findOne({
       participants: user._id,
@@ -389,22 +437,26 @@ exports.searchUserReservations = async (req, res) => {
       return res.json({ user, reservation: null });
     }
 
+    // Get resource details
     const resource = await Resource.findById(reservation.resource_id);
     if (!resource) {
       return res.status(404).json({ error: "Resource not found" });
     }
 
+    // Get floor details
     const floor = await Floor.findById(resource.floor_id);
     if (!floor) {
       return res.status(404).json({ error: "Floor not found" });
     }
 
+    // Get presigned URL for the floor plan
     const { s3Response: floorPlanUrl, error } =
       await createGetObjectPreSignedURL(floor.layout_url);
     if (error) {
       console.error("Error generating floor plan URL:", error);
     }
 
+    // Return all relevant information
     res.json({
       user,
       reservation,

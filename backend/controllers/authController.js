@@ -5,10 +5,20 @@ const Company = require("../models/Company");
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
-exports.signup = async (req, res) => {
-  const { username, email_id, password, role, company_name } = req.body;
+const { z } = require("zod");
 
+const signupSchema = z.object({
+  username: z.string().min(3, "Username must be at least 3 characters long"),
+  email_id: z.string().email("Invalid email"),
+  password: z.string().min(8, "Password must be at least 8 characters long"),
+  role: z.string().min(1, "Role is required"),
+  company_name: z.string().min(1, "Company name is required"),
+});
+
+exports.signup = async (req, res) => {
   try {
+    const { username, email_id, password, role, company_name } = signupSchema.parse(req.body);
+
     let company = await Company.findOne({ company_name });
 
     if (role === "admin" && !company) {
@@ -52,15 +62,22 @@ exports.signup = async (req, res) => {
       company_id: company._id,
     });
   } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: err.issues[0].message });
+    }
     console.error(err);
     res.status(500).send("Error adding user to MongoDB!");
   }
 };
+const loginSchema = z.object({
+  email_id: z.string().email("Invalid email"),
+  password: z.string().min(1, "Password cannot be empty"),
+});
 
 exports.login = async (req, res) => {
-  const { email_id, password } = req.body;
-
   try {
+    const { email_id, password } = loginSchema.parse(req.body);
+
     const user = await User.findOne({ email_id });
 
     if (!user) return res.status(400).json({ error: "User not found" });
@@ -80,6 +97,9 @@ exports.login = async (req, res) => {
 
     res.json({ message: "Login successful", role: user.role });
   } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: err.issues[0].message });
+    }
     console.error(err);
     res.status(500).json({ error: "Server error" });
   }

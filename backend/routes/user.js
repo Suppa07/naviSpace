@@ -10,12 +10,9 @@ router.get("/favorites", authenticateToken, userController.getFavorites);
 router.get("/reservations", authenticateToken, userController.getUnexpiredReservations);
 router.get("/past-reservations", authenticateToken, userController.getPastReservations);
 router.get("/resource-location/:resourceId", authenticateToken, userController.getResourceLocation);
-router.get("/floorplans", authenticateToken, userController.getAllFloorPlans);
+router.get("/floorplans", authenticateToken, userController.getAllFloorPlans);  
 router.delete("/reservation/:reservationId", authenticateToken, userController.deleteReservation);
 router.get("/search-reservations", authenticateToken, userController.searchUserReservations);
 
-// Navigation routes
-router.post("/navigation/find-path", authenticateToken, userController.findPath);
-router.get("/navigation/search", authenticateToken, userController.searchDestination);
 
 module.exports = router;

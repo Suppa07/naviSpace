@@ -1,7 +1,15 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
-import { Container, Row, Col, Form, Button, Card, Alert } from 'react-bootstrap';
+import {
+  Container,
+  Row,
+  Col,
+  Form,
+  Button,
+  Card,
+  Alert,
+} from "react-bootstrap";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -21,7 +29,15 @@ const Login = () => {
       setLoading(false);
       return;
     }
-
+    if (
+      !email ||
+      !password ||
+      !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email)
+    ) {
+      setError("Please fill in both fields with a valid email address.");
+      setLoading(false);
+      return;
+    }
     try {
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}auth/login`,
@@ -52,9 +68,9 @@ const Login = () => {
                 <h2 className="fw-bold">Welcome Back</h2>
                 <p className="text-muted">Sign in to your account</p>
               </div>
-              
+
               {error && <Alert variant="danger">{error}</Alert>}
-              
+
               <Form onSubmit={handleSubmit}>
                 <Form.Group className="mb-3">
                   <Form.Label>Email Address</Form.Label>
@@ -66,7 +82,7 @@ const Login = () => {
                     required
                   />
                 </Form.Group>
-                
+
                 <Form.Group className="mb-4">
                   <Form.Label>Password</Form.Label>
                   <Form.Control
@@ -77,19 +93,19 @@ const Login = () => {
                     required
                   />
                 </Form.Group>
-                
+
                 <div className="d-grid">
-                  <Button 
-                    variant="primary" 
-                    type="submit" 
+                  <Button
+                    variant="primary"
+                    type="submit"
                     size="lg"
                     disabled={loading}
                   >
-                    {loading ? 'Signing in...' : 'Sign In'}
+                    {loading ? "Signing in..." : "Sign In"}
                   </Button>
                 </div>
               </Form>
-              
+
               <div className="text-center mt-4">
                 <p>
                   Don't have an account? <Link to="/signup">Sign up</Link>

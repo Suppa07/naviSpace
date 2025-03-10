@@ -2,13 +2,13 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { Card, Button, Table, Alert, Badge, Modal, Form, InputGroup, Pagination } from 'react-bootstrap';
 
-const UserManagement = () => {
-  const [users, setUsers] = useState([]);
+const ReservationManagement = () => {
+  const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedReservation, setSelectedReservation] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
@@ -18,7 +18,7 @@ const UserManagement = () => {
   const ITEMS_PER_PAGE = 10;
 
   useEffect(() => {
-    fetchUsers();
+    fetchReservations();
   }, [currentPage]);
 
   useEffect(() => {
@@ -28,7 +28,7 @@ const UserManagement = () => {
     
     const timeout = setTimeout(() => {
       setCurrentPage(1);
-      fetchUsers();
+      fetchReservations();
     }, 500);
 
     setSearchTimeout(timeout);
@@ -40,10 +40,10 @@ const UserManagement = () => {
     };
   }, [searchQuery]);
 
-  const fetchUsers = async () => {
+  const fetchReservations = async () => {
     setLoading(true);
     try {
-      const response = await axios.get(`${API_URL}admin/users`, {
+      const response = await axios.get(`${API_URL}admin/reservations`, {
         params: {
           page: currentPage,
           limit: ITEMS_PER_PAGE,
@@ -51,12 +51,12 @@ const UserManagement = () => {
         },
         withCredentials: true,
       });
-      setUsers(response.data.users);
+      setReservations(response.data.reservations);
       setTotalPages(response.data.pagination.pages);
       setError("");
     } catch (err) {
-      console.error("Error fetching users:", err);
-      setError("Failed to load users. Please try again.");
+      console.error("Error fetching reservations:", err);
+      setError("Failed to load reservations. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -78,38 +78,51 @@ const UserManagement = () => {
     }
   };
 
-  const openDeleteModal = (user) => {
-    setSelectedUser(user);
+  const openDeleteModal = (reservation) => {
+    setSelectedReservation(reservation);
     setShowDeleteModal(true);
   };
 
   const closeDeleteModal = () => {
     setShowDeleteModal(false);
-    setSelectedUser(null);
+    setSelectedReservation(null);
   };
 
-  const handleDeleteUser = async () => {
-    if (!selectedUser) return;
+  const handleDeleteReservation = async () => {
+    if (!selectedReservation) return;
     
     try {
-      await axios.delete(`${API_URL}admin/users/${selectedUser._id}`, {
+      await axios.delete(`${API_URL}admin/reservation/${selectedReservation._id}`, {
         withCredentials: true
       });
       
-      setSuccessMessage("User removed successfully!");
+      setSuccessMessage("Reservation deleted successfully!");
       setTimeout(() => setSuccessMessage(""), 3000);
       
-      fetchUsers();
+      fetchReservations();
       closeDeleteModal();
     } catch (error) {
-      console.error("Error removing user:", error);
-      setError("Failed to remove user. Please try again.");
+      console.error("Error deleting reservation:", error);
+      setError("Failed to delete reservation. Please try again.");
     }
   };
 
   const handlePageChange = (pageNumber) => {
     setCurrentPage(pageNumber);
     window.scrollTo(0, 0);
+  };
+
+  const getResourceTypeIcon = (type) => {
+    switch(type?.toLowerCase()) {
+      case 'desk':
+        return <i className="bi bi-laptop me-2"></i>;
+      case 'meeting room':
+        return <i className="bi bi-people me-2"></i>;
+      case 'parking spot':
+        return <i className="bi bi-car-front me-2"></i>;
+      default:
+        return <i className="bi bi-building me-2"></i>;
+    }
   };
 
   const renderPagination = () => {
@@ -184,18 +197,18 @@ const UserManagement = () => {
     <Card className="shadow-sm">
       <Card.Body>
         <div className="d-flex justify-content-between align-items-center mb-4">
-          <h3 className="mb-0">Company Users</h3>
-          <Button variant="outline-primary" onClick={() => fetchUsers()}>
+          <h3 className="mb-0">Current Reservations</h3>
+          <Button variant="outline-primary" onClick={fetchReservations}>
             <i className="bi bi-arrow-clockwise me-1"></i> Refresh
           </Button>
         </div>
-        
+
         {successMessage && (
           <Alert variant="success" className="mb-4" dismissible onClose={() => setSuccessMessage("")}>
             {successMessage}
           </Alert>
         )}
-        
+
         {error && (
           <Alert variant="danger" className="mb-4" dismissible onClose={() => setError("")}>
             {error}
@@ -206,7 +219,7 @@ const UserManagement = () => {
           <InputGroup>
             <Form.Control
               type="text"
-              placeholder="Search by username or email..."
+              placeholder="Search by resource name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -220,19 +233,19 @@ const UserManagement = () => {
             )}
           </InputGroup>
         </Form>
-        
+
         {loading ? (
           <div className="text-center py-4">
             <div className="spinner-border text-primary" role="status">
               <span className="visually-hidden">Loading...</span>
             </div>
-            <p className="mt-2">Loading users...</p>
+            <p className="mt-2">Loading reservations...</p>
           </div>
-        ) : users.length === 0 ? (
+        ) : reservations.length === 0 ? (
           <Alert variant="info">
             {searchQuery 
-              ? `No users found matching "${searchQuery}"`
-              : "No users have been added to your company yet."
+              ? `No reservations found matching "${searchQuery}"`
+              : "No active reservations at the moment."
             }
           </Alert>
         ) : (
@@ -240,36 +253,37 @@ const UserManagement = () => {
             <Table responsive hover>
               <thead>
                 <tr>
-                  <th>Username</th>
-                  <th>Email</th>
-                  <th>Role</th>
-                  <th>Joined</th>
+                  <th>Resource</th>
+                  <th>Type</th>
+                  <th>Start Time</th>
+                  <th>End Time</th>
+                  <th>Status</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {users.map((user) => (
-                  <tr key={user._id}>
-                    <td>{user.username}</td>
-                    <td>{user.email_id}</td>
+                {reservations.map((reservation) => (
+                  <tr key={reservation._id}>
                     <td>
-                      <Badge bg={user.role === 'admin' ? 'danger' : 'primary'}>
-                        {user.role}
-                      </Badge>
+                      <div className="d-flex align-items-center">
+                        {getResourceTypeIcon(reservation.resource_type)}
+                        {reservation.resource_id?.name || "Unknown Resource"}
+                      </div>
+                    </td>
+                    <td>{reservation.resource_type}</td>
+                    <td>{formatDateTime(reservation.start_time)}</td>
+                    <td>{formatDateTime(reservation.end_time)}</td>
+                    <td>
+                      <Badge bg="success">Active</Badge>
                     </td>
                     <td>
-                      {user.createdAt ? formatDateTime(user.createdAt) : 'N/A'}
-                    </td>
-                    <td>
-                      {user.role !== 'admin' && (
-                        <Button 
-                          variant="danger" 
-                          size="sm"
-                          onClick={() => openDeleteModal(user)}
-                        >
-                          <i className="bi bi-trash me-1"></i> Remove
-                        </Button>
-                      )}
+                      <Button 
+                        variant="danger" 
+                        size="sm"
+                        onClick={() => openDeleteModal(reservation)}
+                      >
+                        <i className="bi bi-trash me-1"></i> Delete
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -281,16 +295,17 @@ const UserManagement = () => {
         )}
       </Card.Body>
 
-      {/* Delete User Modal */}
+      {/* Delete Confirmation Modal */}
       <Modal show={showDeleteModal} onHide={closeDeleteModal}>
         <Modal.Header closeButton>
-          <Modal.Title>Remove User</Modal.Title>
+          <Modal.Title>Delete Reservation</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          {selectedUser && (
+          {selectedReservation && (
             <p>
-              Are you sure you want to remove <strong>{selectedUser.username}</strong> ({selectedUser.email_id}) from your company?
-              This action cannot be undone.
+              Are you sure you want to delete the reservation for{" "}
+              <strong>{selectedReservation.resource_id?.name || "this resource"}</strong> on{" "}
+              {formatDateTime(selectedReservation.start_time)}?
             </p>
           )}
         </Modal.Body>
@@ -298,8 +313,8 @@ const UserManagement = () => {
           <Button variant="secondary" onClick={closeDeleteModal}>
             Cancel
           </Button>
-          <Button variant="danger" onClick={handleDeleteUser}>
-            Remove User
+          <Button variant="danger" onClick={handleDeleteReservation}>
+            Delete Reservation
           </Button>
         </Modal.Footer>
       </Modal>
@@ -307,4 +322,4 @@ const UserManagement = () => {
   );
 };
 
-export default UserManagement;
+export default ReservationManagement;

@@ -15,42 +15,146 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 exports.getAllUsers = async (req, res) => {
   try {
-    const users = await User.find({ company_id: req.user.company_id }).select(
-      "-password"
-    );
-    res.json(users);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || '';
+    const skip = (page - 1) * limit;
+
+    let query = { company_id: req.user.company_id };
+    if (search) {
+      query.$or = [
+        { username: { $regex: search, $options: 'i' } },
+        { email_id: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const total = await User.countDocuments(query);
+    const users = await User.find(query)
+      .select("-password")
+      .skip(skip)
+      .limit(limit)
+      .sort({ created_at: -1 });
+
+    res.json({
+      users,
+      pagination: {
+        total,
+        pages: Math.ceil(total / limit),
+        currentPage: page,
+        hasMore: skip + users.length < total
+      }
+    });
   } catch (err) {
     console.error(err);
     res.status(500).send("Error fetching users.");
   }
 };
 
-exports.getAllResources = async (req, res) => {
+exports.getAllReservations = async (req, res) => {
   try {
-    const resources = await Resource.find({ company_id: req.user.company_id });
-    const reservations = await Reservation.find({
-      resource_id: { $in: resources.map((r) => r._id) },
-      end_time: { $gt: new Date() },
-    }).populate("resource_id");
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || '';
+    const skip = (page - 1) * limit;
 
-    res.json({ resources, reservations });
+    let query = { end_time: { $gt: new Date() } };
+    if (search) {
+      const resources = await Resource.find({
+        name: { $regex: search, $options: 'i' }
+      }).select('_id');
+      
+      query.$or = [
+        { resource_id: { $in: resources.map(r => r._id) } }
+      ];
+    }
+
+    const total = await Reservation.countDocuments(query);
+    const reservations = await Reservation.find(query)
+      .populate("resource_id")
+      .skip(skip)
+      .limit(limit)
+      .sort({ start_time: 1 });
+
+    res.json({
+      reservations,
+      pagination: {
+        total,
+        pages: Math.ceil(total / limit),
+        currentPage: page,
+        hasMore: skip + reservations.length < total
+      }
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).send("Error fetching resources and reservations.");
+    res.status(500).send("Error fetching reservations.");
+  }
+};
+
+exports.getAllResources = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || '';
+    const skip = (page - 1) * limit;
+
+    let query = { company_id: req.user.company_id };
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { resource_type: { $regex: search, $options: 'i' } },
+        { amenities: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const total = await Resource.countDocuments(query);
+    const resources = await Resource.find(query)
+      .populate("floor_id", "name")
+      .skip(skip)
+      .limit(limit)
+      .sort({ name: 1 });
+
+    res.json({
+      resources,
+      total,
+      pagination: {
+        total,
+        pages: Math.ceil(total / limit),
+        currentPage: page,
+        hasMore: skip + resources.length < total
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Error fetching resources.");
   }
 };
 
 exports.reserveResource = async (req, res) => {
   const { resource_id, user_id, start_time, end_time } = req.body;
   const session = await Reservation.startSession();
+
   try {
     await session.withTransaction(async () => {
-      const user = await User.findById(user_id, { session });
-      const resource = await Resource.findById(resource_id, { session });
+      const user = await User.findById(user_id).session(session);
+      const resource = await Resource.findById(resource_id).select("resource_type").session(session);
 
       if (!user || !resource) throw new Error("User or Resource not found.");
+
       if (user.company_id.toString() !== req.user.company_id.toString()) {
         throw new Error("Cannot reserve for users outside your company.");
+      }
+
+      const existingReservation = await Reservation.findOne({
+        resource_id,
+        $or: [
+          { start_time: { $lte: end_time }, end_time: { $gte: start_time } },
+          { start_time: { $lte: start_time }, end_time: { $gte: end_time } },
+          { start_time: { $gte: start_time }, end_time: { $lte: end_time } },
+        ],
+      }).session(session);
+
+      if (existingReservation) {
+        throw new Error("Resource is already reserved for the given time slot.");
       }
 
       const newReservation = new Reservation({
@@ -58,25 +162,22 @@ exports.reserveResource = async (req, res) => {
         start_time,
         end_time,
         participants: [user_id],
-        resource_type: await Resource.findById(resource_id).select(
-          "resource_type",
-          { session }
-        ),
+        resource_type: resource.resource_type,
         is_fixed: false,
       });
 
       await newReservation.save({ session });
     });
-    await session.commitTransaction();
+
     res.json({ message: "Resource reserved successfully." });
   } catch (err) {
-    await session.abortTransaction();
     console.error(err);
     res.status(500).send("Error reserving resource.");
   } finally {
     await session.endSession();
   }
 };
+
 exports.uploadFloorPlan = async (req, res) => {
   const { name } = req.body;
   const file = req.file;
@@ -87,10 +188,8 @@ exports.uploadFloorPlan = async (req, res) => {
   console.log(file);
 
   try {
-    // Generate a unique key for S3
     const key = `floorplans/${Date.now()}-${path.basename(file.originalname)}`;
 
-    // Upload to S3
     console.log(file.path);
     const uploadResult = await uploadFileToS3(file, key);
 
@@ -98,7 +197,6 @@ exports.uploadFloorPlan = async (req, res) => {
       throw new Error("Failed to upload to S3");
     }
 
-    // Create floor plan record with S3 key
     const newFloor = new Floor({
       company_id: req.user.company_id,
       name,
@@ -193,7 +291,6 @@ exports.getAllFloorPlans = async (req, res) => {
   try {
     const floors = await Floor.find({ company_id: req.user.company_id });
 
-    // Generate presigned URLs for each floor plan
     const floorsWithUrls = await Promise.all(
       floors.map(async (floor) => {
         const { s3Response: presignedUrl, error } =
@@ -223,7 +320,6 @@ exports.deleteFloorPlan = async (req, res) => {
         .send("Cannot delete floor plans outside your company.");
     }
 
-    // Delete from S3
     const { error } = await deleteObjectFromS3(floor.layout_url);
     if (error) {
       console.error("Error deleting from S3:", error);
@@ -309,65 +405,8 @@ exports.setBaseLocation = async (req, res) => {
   }
 };
 
-exports.addWalkablePath = async (req, res) => {
-  const { floor_id, start_point, end_point, path_type, distance } = req.body;
 
-  try {
-    const floor = await Floor.findById(floor_id);
 
-    if (!floor) {
-      return res.status(404).json({ error: "Floor not found" });
-    }
 
-    if (floor.company_id.toString() !== req.user.company_id.toString()) {
-      return res
-        .status(403)
-        .json({ error: "Cannot modify floors outside your company" });
-    }
-
-    floor.walkable_paths.push({
-      start_point,
-      end_point,
-      type: path_type,
-      distance,
-    });
-
-    await floor.save();
-    res.json({ message: "Walkable path added successfully", floor });
-  } catch (error) {
-    console.error("Error adding walkable path:", error);
-    res.status(500).json({ error: "Failed to add walkable path" });
-  }
-};
-
-exports.addTransitionPoint = async (req, res) => {
-  const { floor_id, location, type, connected_floors } = req.body;
-
-  try {
-    const floor = await Floor.findById(floor_id);
-
-    if (!floor) {
-      return res.status(404).json({ error: "Floor not found" });
-    }
-
-    if (floor.company_id.toString() !== req.user.company_id.toString()) {
-      return res
-        .status(403)
-        .json({ error: "Cannot modify floors outside your company" });
-    }
-
-    floor.transition_points.push({
-      location,
-      type,
-      connected_floors,
-    });
-
-    await floor.save();
-    res.json({ message: "Transition point added successfully", floor });
-  } catch (error) {
-    console.error("Error adding transition point:", error);
-    res.status(500).json({ error: "Failed to add transition point" });
-  }
-};
 
 module.exports = exports;

@@ -10,6 +10,8 @@ import {
   Badge,
   Modal,
   Image,
+  InputGroup,
+  Pagination
 } from "react-bootstrap";
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import format from 'date-fns/format';
@@ -53,12 +55,37 @@ const ResourceBooking = () => {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [calendarEvents, setCalendarEvents] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [searchTimeout, setSearchTimeout] = useState(null);
 
+  const ITEMS_PER_PAGE = 9;
   const API_URL = import.meta.env.VITE_API_URL;
 
   useEffect(() => {
     fetchAvailability();
-  }, [resourceType]);
+  }, [resourceType, currentPage]);
+
+  useEffect(() => {
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+    
+    const timeout = setTimeout(() => {
+      setCurrentPage(1);
+      fetchAvailability();
+    }, 500);
+
+    setSearchTimeout(timeout);
+
+    return () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+    };
+  }, [searchQuery]);
 
   useEffect(() => {
     if (userLocation && selectedFloorPlan?.base_location) {
@@ -359,11 +386,22 @@ const ResourceBooking = () => {
     setLoading(true);
     try {
       const response = await axios.get(
-        `${API_URL}users/availability?resourceType=${resourceType}`,
-        { withCredentials: true }
+        `${API_URL}users/availability`,
+        {
+          params: {
+            resourceType,
+            page: currentPage,
+            limit: ITEMS_PER_PAGE,
+            search: searchQuery
+          },
+          withCredentials: true
+        }
       );
+      
       setResources(response.data.resources);
       setReservations(response.data.reservations);
+      setTotalPages(response.data.pagination.pages);
+      setHasMore(response.data.pagination.hasMore);
       setError("");
     } catch (error) {
       console.error("Error fetching availability:", error);
@@ -509,6 +547,79 @@ const ResourceBooking = () => {
     );
   };
 
+  const handlePageChange = (pageNumber) => {
+    setCurrentPage(pageNumber);
+    window.scrollTo(0, 0);
+  };
+
+  const renderPagination = () => {
+    if (totalPages <= 1) return null;
+
+    let items = [];
+    const maxVisiblePages = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+    if (endPage - startPage + 1 < maxVisiblePages) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+
+    items.push(
+      <Pagination.Prev
+        key="prev"
+        onClick={() => handlePageChange(currentPage - 1)}
+        disabled={currentPage === 1}
+      />
+    );
+
+    if (startPage > 1) {
+      items.push(
+        <Pagination.Item key={1} onClick={() => handlePageChange(1)}>
+          1
+        </Pagination.Item>
+      );
+      if (startPage > 2) {
+        items.push(<Pagination.Ellipsis key="ellipsis1" />);
+      }
+    }
+
+    for (let number = startPage; number <= endPage; number++) {
+      items.push(
+        <Pagination.Item
+          key={number}
+          active={number === currentPage}
+          onClick={() => handlePageChange(number)}
+        >
+          {number}
+        </Pagination.Item>
+      );
+    }
+
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) {
+        items.push(<Pagination.Ellipsis key="ellipsis2" />);
+      }
+      items.push(
+        <Pagination.Item
+          key={totalPages}
+          onClick={() => handlePageChange(totalPages)}
+        >
+          {totalPages}
+        </Pagination.Item>
+      );
+    }
+
+    items.push(
+      <Pagination.Next
+        key="next"
+        onClick={() => handlePageChange(currentPage + 1)}
+        disabled={currentPage === totalPages}
+      />
+    );
+
+    return <Pagination className="justify-content-center mt-4">{items}</Pagination>;
+  };
+
   return (
     <Card className="shadow-sm">
       <Card.Body>
@@ -531,17 +642,47 @@ const ResourceBooking = () => {
           </Alert>
         )}
 
-        <Form.Group className="mb-4">
-          <Form.Label>Resource Type</Form.Label>
-          <Form.Select
-            value={resourceType}
-            onChange={(e) => setResourceType(e.target.value)}
-          >
-            <option value="desk">Desks</option>
-            <option value="meeting room">Meeting Rooms</option>
-            <option value="parking spot">Parking Spots</option>
-          </Form.Select>
-        </Form.Group>
+        <div className="mb-4">
+          <Row>
+            <Col md={4}>
+              <Form.Group>
+                <Form.Label>Resource Type</Form.Label>
+                <Form.Select
+                  value={resourceType}
+                  onChange={(e) => {
+                    setResourceType(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                >
+                  <option value="desk">Desks</option>
+                  <option value="meeting room">Meeting Rooms</option>
+                  <option value="parking spot">Parking Spots</option>
+                </Form.Select>
+              </Form.Group>
+            </Col>
+            <Col md={8}>
+              <Form.Group>
+                <Form.Label>Search</Form.Label>
+                <InputGroup>
+                  <Form.Control
+                    type="text"
+                    placeholder="Search by name or amenities..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                  {searchQuery && (
+                    <Button 
+                      variant="outline-secondary"
+                      onClick={() => setSearchQuery("")}
+                    >
+                      <i className="bi bi-x-lg"></i>
+                    </Button>
+                  )}
+                </InputGroup>
+              </Form.Group>
+            </Col>
+          </Row>
+        </div>
 
         {loading ? (
           <div className="text-center py-4">
@@ -552,76 +693,83 @@ const ResourceBooking = () => {
           </div>
         ) : resources.length === 0 ? (
           <Alert variant="info">
-            No {resourceType}s are available at the moment.
+            {searchQuery 
+              ? `No ${resourceType}s found matching "${searchQuery}"`
+              : `No ${resourceType}s are available at the moment.`
+            }
           </Alert>
         ) : (
-          <Row xs={1} md={2} lg={3} className="g-4">
-            {resources.map((resource) => (
-              <Col key={resource._id}>
-                <Card className="h-100">
-                  <Card.Body>
-                    <Card.Title>
-                      {getResourceTypeIcon(resource.resource_type)}
-                      {resource.name}
-                    </Card.Title>
-                    <Card.Subtitle className="mb-2 text-muted">
-                      Floor: {resource.floor_id?.name}
-                    </Card.Subtitle>
+          <>
+            <Row xs={1} md={2} lg={3} className="g-4">
+              {resources.map((resource) => (
+                <Col key={resource._id}>
+                  <Card className="h-100">
+                    <Card.Body>
+                      <Card.Title>
+                        {getResourceTypeIcon(resource.resource_type)}
+                        {resource.name}
+                      </Card.Title>
+                      <Card.Subtitle className="mb-2 text-muted">
+                        Floor: {resource.floor_id?.name}
+                      </Card.Subtitle>
 
-                    <div className="mb-2">
-                      {isResourceAvailable(resource) ? (
-                        <Badge bg="success">Available</Badge>
-                      ) : (
-                        <Badge bg="danger">In Use</Badge>
-                      )}
-                      {resource.capacity > 1 && (
-                        <Badge bg="info" className="ms-2">
-                          Capacity: {resource.capacity}
-                        </Badge>
-                      )}
-                    </div>
-
-                    {resource.amenities && resource.amenities.length > 0 && (
-                      <div className="mb-3">
-                        {resource.amenities.map((amenity, index) => (
-                          <Badge
-                            bg="light"
-                            text="dark"
-                            className="me-1 mb-1"
-                            key={index}
-                          >
-                            {amenity}
+                      <div className="mb-2">
+                        {isResourceAvailable(resource) ? (
+                          <Badge bg="success">Available</Badge>
+                        ) : (
+                          <Badge bg="danger">In Use</Badge>
+                        )}
+                        {resource.capacity > 1 && (
+                          <Badge bg="info" className="ms-2">
+                            Capacity: {resource.capacity}
                           </Badge>
-                        ))}
+                        )}
                       </div>
-                    )}
 
-                    <div className="d-flex mt-3 flex-wrap gap-2">
-                      <Button
-                        variant="primary"
-                        onClick={() => openBookingModal(resource)}
-                        disabled={!isResourceAvailable(resource)}
-                      >
-                        <i className="bi bi-calendar-plus me-1"></i> Book
-                      </Button>
-                      <Button
-                        variant="outline-primary"
-                        onClick={() => handleFavorite(resource)}
-                      >
-                        <i className="bi bi-star me-1"></i> Favorite
-                      </Button>
-                      <Button
-                        variant="outline-info"
-                        onClick={() => openNavigationModal(resource)}
-                      >
-                        <i className="bi bi-geo-alt me-1"></i> Navigate
-                      </Button>
-                    </div>
-                  </Card.Body>
-                </Card>
-              </Col>
-            ))}
-          </Row>
+                      {resource.amenities && resource.amenities.length > 0 && (
+                        <div className="mb-3">
+                          {resource.amenities.map((amenity, index) => (
+                            <Badge
+                              bg="light"
+                              text="dark"
+                              className="me-1 mb-1"
+                              key={index}
+                            >
+                              {amenity}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="d-flex mt-3 flex-wrap gap-2">
+                        <Button
+                          variant="primary"
+                          onClick={() => openBookingModal(resource)}
+                          disabled={!isResourceAvailable(resource)}
+                        >
+                          <i className="bi bi-calendar-plus me-1"></i> Book
+                        </Button>
+                        <Button
+                          variant="outline-primary"
+                          onClick={() => handleFavorite(resource)}
+                        >
+                          <i className="bi bi-star me-1"></i> Favorite
+                        </Button>
+                        <Button
+                          variant="outline-info"
+                          onClick={() => openNavigationModal(resource)}
+                        >
+                          <i className="bi bi-geo-alt me-1"></i> Navigate
+                        </Button>
+                      </div>
+                    </Card.Body>
+                  </Card>
+                </Col>
+              ))}
+            </Row>
+
+            {renderPagination()}
+          </>
         )}
 
         <Modal show={showBookingModal} onHide={closeBookingModal} size="lg">

@@ -18,12 +18,7 @@ const ResourceSchema = new mongoose.Schema(
     },
     capacity: { type: Number, default: 1 },
     amenities: [{ type: String }],
-    category: { type: String }, // For search categorization
-    landmarks: [{ // Nearby landmarks for navigation
-      name: String,
-      direction: String, // e.g., "north", "left", etc.
-      distance: Number
-    }]
+
   },
   { timestamps: true }
 );
