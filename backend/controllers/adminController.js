@@ -9,6 +9,7 @@ const {
   createGetObjectPreSignedURL,
   deleteObjectFromS3,
 } = require("./s3");
+const axios = require('axios');
 const path = require("path");
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -17,14 +18,14 @@ exports.getAllUsers = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const search = req.query.search || '';
+    const search = req.query.search || "";
     const skip = (page - 1) * limit;
 
     let query = { company_id: req.user.company_id };
     if (search) {
       query.$or = [
-        { username: { $regex: search, $options: 'i' } },
-        { email_id: { $regex: search, $options: 'i' } }
+        { username: { $regex: search, $options: "i" } },
+        { email_id: { $regex: search, $options: "i" } },
       ];
     }
 
@@ -41,8 +42,8 @@ exports.getAllUsers = async (req, res) => {
         total,
         pages: Math.ceil(total / limit),
         currentPage: page,
-        hasMore: skip + users.length < total
-      }
+        hasMore: skip + users.length < total,
+      },
     });
   } catch (err) {
     console.error(err);
@@ -54,18 +55,16 @@ exports.getAllReservations = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const search = req.query.search || '';
+    const search = req.query.search || "";
     const skip = (page - 1) * limit;
 
     let query = { end_time: { $gt: new Date() } };
     if (search) {
       const resources = await Resource.find({
-        name: { $regex: search, $options: 'i' }
-      }).select('_id');
-      
-      query.$or = [
-        { resource_id: { $in: resources.map(r => r._id) } }
-      ];
+        name: { $regex: search, $options: "i" },
+      }).select("_id");
+
+      query.$or = [{ resource_id: { $in: resources.map((r) => r._id) } }];
     }
 
     const total = await Reservation.countDocuments(query);
@@ -81,8 +80,8 @@ exports.getAllReservations = async (req, res) => {
         total,
         pages: Math.ceil(total / limit),
         currentPage: page,
-        hasMore: skip + reservations.length < total
-      }
+        hasMore: skip + reservations.length < total,
+      },
     });
   } catch (err) {
     console.error(err);
@@ -94,15 +93,15 @@ exports.getAllResources = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const search = req.query.search || '';
+    const search = req.query.search || "";
     const skip = (page - 1) * limit;
 
     let query = { company_id: req.user.company_id };
     if (search) {
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { resource_type: { $regex: search, $options: 'i' } },
-        { amenities: { $regex: search, $options: 'i' } }
+        { name: { $regex: search, $options: "i" } },
+        { resource_type: { $regex: search, $options: "i" } },
+        { amenities: { $regex: search, $options: "i" } },
       ];
     }
 
@@ -120,11 +119,11 @@ exports.getAllResources = async (req, res) => {
         total,
         pages: Math.ceil(total / limit),
         currentPage: page,
-        hasMore: skip + resources.length < total
-      }
+        hasMore: skip + resources.length < total,
+      },
     });
   } catch (err) {
-    console.error(err);
+    console.error("Error fetching resources:", err);
     res.status(500).send("Error fetching resources.");
   }
 };
@@ -136,7 +135,9 @@ exports.reserveResource = async (req, res) => {
   try {
     await session.withTransaction(async () => {
       const user = await User.findById(user_id).session(session);
-      const resource = await Resource.findById(resource_id).select("resource_type").session(session);
+      const resource = await Resource.findById(resource_id)
+        .select("resource_type name")
+        .session(session);
 
       if (!user || !resource) throw new Error("User or Resource not found.");
 
@@ -167,6 +168,31 @@ exports.reserveResource = async (req, res) => {
       });
 
       await newReservation.save({ session });
+
+      // Send email notification to the user
+      try {
+        const startDateTime = new Date(start_time).toLocaleString();
+        const endDateTime = new Date(end_time).toLocaleString();
+        
+        await axios.post('http://localhost:5001/send-notification-to-user', {
+          user: user.email_id,
+          subject: 'New Reservation Created',
+          text: `A new reservation has been created for you for ${resource.name}`,
+          html: `
+            <h2>New Reservation Created</h2>
+            <p>A new reservation has been created for you with the following details:</p>
+            <ul>
+              <li><strong>Resource:</strong> ${resource.name}</li>
+              <li><strong>Type:</strong> ${resource.resource_type}</li>
+              <li><strong>Start Time:</strong> ${startDateTime}</li>
+              <li><strong>End Time:</strong> ${endDateTime}</li>
+            </ul>
+          `
+        });
+      } catch (emailError) {
+        console.error('Error sending reservation notification:', emailError);
+        // Continue with reservation creation even if email fails
+      }
     });
 
     res.json({ message: "Resource reserved successfully." });
@@ -177,6 +203,8 @@ exports.reserveResource = async (req, res) => {
     await session.endSession();
   }
 };
+
+const fs = require('fs');
 
 exports.uploadFloorPlan = async (req, res) => {
   const { name } = req.body;
@@ -196,6 +224,9 @@ exports.uploadFloorPlan = async (req, res) => {
     if (uploadResult.error) {
       throw new Error("Failed to upload to S3");
     }
+
+    // Delete the file locally
+    fs.unlinkSync(file.path);
 
     const newFloor = new Floor({
       company_id: req.user.company_id,
@@ -221,20 +252,15 @@ exports.uploadFloorPlan = async (req, res) => {
 };
 
 exports.addResource = async (req, res) => {
-  const { resource_type, floor_id, location, name, capacity, amenities } =
-    req.body;
+  const { resource_type, floor_id, location, name, capacity, amenities } = req.body;
 
   try {
     if (!Array.isArray(location) || location.length !== 2) {
-      return res
-        .status(400)
-        .json({ error: "Invalid location format. Expected [x, y]." });
+      return res.status(400).json({ error: "Invalid location format. Expected [x, y]." });
     }
 
     if (isNaN(parseFloat(location[0])) || isNaN(parseFloat(location[1]))) {
-      return res
-        .status(400)
-        .json({ error: "Location coordinates must be numeric values." });
+      return res.status(400).json({ error: "Location coordinates must be numeric values." });
     }
 
     const floor = await Floor.findById(floor_id);
@@ -259,6 +285,33 @@ exports.addResource = async (req, res) => {
     });
 
     await newResource.save();
+
+    // Send email notification to all users in the company
+    try {
+      const companyUsers = await User.find({ company_id: req.user.company_id });
+      const userEmails = companyUsers.map(user => user.email_id);
+
+      await axios.post('http://localhost:5001/send-bulk-notification', {
+        emails: userEmails,
+        subject: 'New Resource Added',
+        text: `A new ${resource_type} has been added: ${name}`,
+        html: `
+          <h2>New Resource Added</h2>
+          <p>A new resource has been added to your company with the following details:</p>
+          <ul>
+            <li><strong>Name:</strong> ${name}</li>
+            <li><strong>Type:</strong> ${resource_type}</li>
+            <li><strong>Capacity:</strong> ${capacity}</li>
+            <li><strong>Floor:</strong> ${floor.name}</li>
+            ${amenities?.length ? `<li><strong>Amenities:</strong> ${amenities.join(', ')}</li>` : ''}
+          </ul>
+        `
+      });
+    } catch (emailError) {
+      console.error('Error sending resource notification:', emailError);
+      // Continue with resource creation even if email fails
+    }
+
     res.json({
       message: "Resource added successfully.",
       resource: newResource,
@@ -404,9 +457,5 @@ exports.setBaseLocation = async (req, res) => {
     res.status(500).json({ error: "Failed to set base location" });
   }
 };
-
-
-
-
 
 module.exports = exports;

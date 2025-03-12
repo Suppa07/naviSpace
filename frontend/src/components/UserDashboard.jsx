@@ -5,6 +5,7 @@ import ResourceBooking from "./user/ResourceBooking";
 import MyReservations from "./user/MyReservations";
 import MyFavorites from "./user/MyFavorites";
 import UserSearch from "./user/UserSearch";
+import Chatbot from "./Chatbot";
 
 const UserDashboard = () => {
   const [successMessage, setSuccessMessage] = useState("");
@@ -58,6 +59,8 @@ const UserDashboard = () => {
           <UserSearch />
         </Tab>
       </Tabs>
+
+      <Chatbot />
     </Container>
   );
 };

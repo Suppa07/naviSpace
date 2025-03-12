@@ -4,6 +4,7 @@ import ResourceManagement from "./admin/ResourceManagement";
 import ReservationManagement from "./admin/ReservationManagement";
 import UserManagement from "./admin/UserManagement";
 import FloorPlanManagement from "./admin/FloorPlanManagement";
+import Chatbot from "./Chatbot";
 
 const AdminDashboard = () => {
   const [successMessage, setSuccessMessage] = useState("");
@@ -42,6 +43,8 @@ const AdminDashboard = () => {
           <FloorPlanManagement />
         </Tab>
       </Tabs>
+
+      <Chatbot />
     </Container>
   );
 };

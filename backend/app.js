@@ -9,9 +9,9 @@ var app = express();
 // require("./jobs/cleanupJob");
 
 app.use(cors({
-  origin: 'http://localhost:5173', // Replace with your frontend URL
+  origin: ['http://localhost:5173', 'http://localhost:5001'], 
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true // If you're using cookies or authentication
+  credentials: true 
 }));
 
 // Add headers for image CORS
@@ -30,6 +30,7 @@ var authRouter = require('./routes/auth');
 const companyRoutes = require("./routes/company");
 const adminRoutes = require("./routes/admin");
 const userRoutes = require("./routes/user");
+const chatbotRoutes = require("./routes/chatbot");
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
@@ -47,6 +48,7 @@ app.use("/companies", companyRoutes);
 app.use("/admin", adminRoutes);
 app.use("/uploads", express.static(path.join(__dirname, "routes", "uploads")));
 app.use("/users", userRoutes);
+app.use("/chatbot", chatbotRoutes);
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {

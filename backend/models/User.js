@@ -8,9 +8,14 @@ const UserSchema = new mongoose.Schema(
     company_id: { type: mongoose.Schema.Types.ObjectId, ref: "Company" },
     role: { type: String, enum: ["user", "admin"], default: "user" },
     pfp: { type: String, default: "" }, // Profile picture URL
-    assigned_resource: { type: mongoose.Schema.Types.ObjectId, ref: "Resource", default: null },
+    assigned_resource: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Resource",
+      default: null,
+    },
+    email_verified: { type: Boolean, default: false }
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("User", UserSchema);  
+module.exports = mongoose.model("User", UserSchema);

@@ -1,7 +1,8 @@
-const bcrypt = require("bcryptjs");
+const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const Company = require("../models/Company");
+const axios = require("axios");
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -17,7 +18,8 @@ const signupSchema = z.object({
 
 exports.signup = async (req, res) => {
   try {
-    const { username, email_id, password, role, company_name } = signupSchema.parse(req.body);
+    const { username, email_id, password, role, company_name } =
+      signupSchema.parse(req.body);
 
     let company = await Company.findOne({ company_name });
 
@@ -27,24 +29,32 @@ exports.signup = async (req, res) => {
     }
 
     if (role !== "admin" && !company) {
-      return res
-        .status(400)
-        .json({
-          message: "Company does not exist. Contact an admin to register.",
-        });
+      return res.status(400).json({
+        message: "Company does not exist. Contact an admin to register.",
+      });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-
+const hashedPassword = await bcrypt.hash(password, 12);
     const newUser = new User({
       username,
       email_id,
       password: hashedPassword,
       role,
       company_id: company._id,
+      email_verified: false
     });
 
     await newUser.save();
+
+    // Send verification email
+    try {
+      await axios.post('http://localhost:5001/send-verification-mail', {
+        email: email_id
+      });
+    } catch (emailError) {
+      console.error('Error sending verification email:', emailError);
+      // Continue with signup even if email fails
+    }
 
     const token = jwt.sign({ id: newUser._id }, JWT_SECRET, {
       expiresIn: "1d",
@@ -57,7 +67,7 @@ exports.signup = async (req, res) => {
     });
 
     res.json({
-      message: "User registered successfully",
+      message: "User registered successfully. Please check your email for verification.",
       role: newUser.role,
       company_id: company._id,
     });
@@ -69,6 +79,7 @@ exports.signup = async (req, res) => {
     res.status(500).send("Error adding user to MongoDB!");
   }
 };
+
 const loginSchema = z.object({
   email_id: z.string().email("Invalid email"),
   password: z.string().min(1, "Password cannot be empty"),
@@ -81,6 +92,13 @@ exports.login = async (req, res) => {
     const user = await User.findOne({ email_id });
 
     if (!user) return res.status(400).json({ error: "User not found" });
+
+    if (!user.email_verified) {
+      return res.status(403).json({ 
+        error: "Please verify your email before logging in",
+        needsVerification: true
+      });
+    }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ error: "Invalid credentials" });
@@ -122,4 +140,63 @@ exports.getProtected = async (req, res) => {
 exports.logout = (req, res) => {
   res.cookie("jwt", "", { maxAge: 0 });
   res.json({ message: "Logged out successfully" });
+};
+
+exports.verifyEmail = async (req, res) => {
+  try {
+    const { email, verified } = req.body;
+    
+    if (!email || !verified) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Invalid verification data" 
+      });
+    }
+
+    const user = await User.findOne({ email_id: email });
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "User not found" 
+      });
+    }
+
+    user.email_verified = true;
+    await user.save();
+
+    res.json({ 
+      success: true, 
+      message: "Email verified successfully" 
+    });
+  } catch (error) {
+    console.error('Error verifying email:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Internal server error" 
+    });
+  }
+};
+
+exports.resendVerification = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email_id: email });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (user.email_verified) {
+      return res.status(400).json({ error: "Email is already verified" });
+    }
+
+    await axios.post('http://localhost:5001/send-verification-mail', {
+      email: email
+    });
+
+    res.json({ message: "Verification email sent successfully" });
+  } catch (error) {
+    console.error('Error resending verification:', error);
+    res.status(500).json({ error: "Failed to resend verification email" });
+  }
 };
