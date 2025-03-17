@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import {
@@ -18,12 +18,59 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  useEffect(() => {
+    // Load Google Sign-In script
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    document.body.appendChild(script);
+
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
+
+  const handleGoogleCallback = async (response) => {
+    try {
+      const res = await axios.post(
+        `${import.meta.env.VITE_API_URL}auth/google`,
+        { token: response.credential },
+        { withCredentials: true }
+      );
+
+      if (res.data.needsProfileCompletion) {
+        navigate("/complete-profile");
+      } else if (res.data.role === "admin") {
+        navigate("/admin");
+      } else {
+        navigate("/user");
+      }
+    } catch (err) {
+      console.error("Google login error:", err);
+      setError("Failed to login with Google. Please try again.");
+    }
+  };
+
+  useEffect(() => {
+    if (window.google) {
+      window.google.accounts.id.initialize({
+        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+        callback: handleGoogleCallback,
+      });
+
+      window.google.accounts.id.renderButton(
+        document.getElementById("googleSignIn"),
+        { theme: "outline", size: "large", width: "100%" }
+      );
+    }
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
 
-    // Add validation
     if (!email || !password) {
       setError("Please fill in both fields.");
       setLoading(false);
@@ -45,7 +92,6 @@ const Login = () => {
         { withCredentials: true }
       );
 
-      // Redirect based on role
       if (response.data.role === "admin") {
         navigate("/admin");
       } else {
@@ -71,7 +117,7 @@ const Login = () => {
 
               {error && <Alert variant="danger">{error}</Alert>}
 
-              <Form onSubmit={handleSubmit}>
+              <Form onSubmit={handleSubmit} className="mb-4">
                 <Form.Group className="mb-3">
                   <Form.Label>Email Address</Form.Label>
                   <Form.Control
@@ -106,8 +152,20 @@ const Login = () => {
                 </div>
               </Form>
 
-              <div className="text-center mt-4">
-                <p>
+              <div className="position-relative mb-4">
+                <hr className="text-muted" />
+                <div 
+                  className="position-absolute top-50 start-50 translate-middle px-3 bg-white"
+                  style={{ marginTop: "-1px" }}
+                >
+                  or
+                </div>
+              </div>
+
+              <div id="googleSignIn" className="d-grid mb-4"></div>
+
+              <div className="text-center">
+                <p className="mb-0">
                   Don't have an account? <Link to="/signup">Sign up</Link>
                 </p>
               </div>

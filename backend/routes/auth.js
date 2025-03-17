@@ -5,6 +5,8 @@ const authenticateToken = require("../middleware/authenticateToken");
 
 router.post("/signup", userController.signup);
 router.post("/login", userController.login);
+router.post("/google", userController.googleLogin);
+router.post("/complete-profile", authenticateToken, userController.completeProfile);
 router.get("/protected", authenticateToken, userController.getProtected);
 router.post("/logout", userController.logout);
 router.post("/verify-email", userController.verifyEmail);

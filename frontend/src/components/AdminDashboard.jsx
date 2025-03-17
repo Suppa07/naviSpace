@@ -4,6 +4,7 @@ import ResourceManagement from "./admin/ResourceManagement";
 import ReservationManagement from "./admin/ReservationManagement";
 import UserManagement from "./admin/UserManagement";
 import FloorPlanManagement from "./admin/FloorPlanManagement";
+import Analytics from "./admin/Analytics";
 import Chatbot from "./Chatbot";
 
 const AdminDashboard = () => {
@@ -41,6 +42,10 @@ const AdminDashboard = () => {
         
         <Tab eventKey="floorplans" title="Floor Plans">
           <FloorPlanManagement />
+        </Tab>
+
+        <Tab eventKey="analytics" title="Analytics">
+          <Analytics />
         </Tab>
       </Tabs>
 

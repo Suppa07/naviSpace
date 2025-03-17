@@ -3,8 +3,10 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const Company = require("../models/Company");
 const axios = require("axios");
+const { OAuth2Client } = require('google-auth-library');
 
 const JWT_SECRET = process.env.JWT_SECRET;
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const { z } = require("zod");
 
@@ -13,6 +15,11 @@ const signupSchema = z.object({
   email_id: z.string().email("Invalid email"),
   password: z.string().min(8, "Password must be at least 8 characters long"),
   role: z.string().min(1, "Role is required"),
+  company_name: z.string().min(1, "Company name is required"),
+});
+
+const profileCompletionSchema = z.object({
+  role: z.enum(['user', 'admin']),
   company_name: z.string().min(1, "Company name is required"),
 });
 
@@ -34,26 +41,25 @@ exports.signup = async (req, res) => {
       });
     }
 
-const hashedPassword = await bcrypt.hash(password, 12);
+    const hashedPassword = await bcrypt.hash(password, 12);
     const newUser = new User({
       username,
       email_id,
       password: hashedPassword,
       role,
       company_id: company._id,
-      email_verified: false
+      email_verified: false,
+      auth_type: 'local'
     });
 
     await newUser.save();
 
-    // Send verification email
     try {
       await axios.post('http://localhost:5001/send-verification-mail', {
         email: email_id
       });
     } catch (emailError) {
       console.error('Error sending verification email:', emailError);
-      // Continue with signup even if email fails
     }
 
     const token = jwt.sign({ id: newUser._id }, JWT_SECRET, {
@@ -89,7 +95,7 @@ exports.login = async (req, res) => {
   try {
     const { email_id, password } = loginSchema.parse(req.body);
 
-    const user = await User.findOne({ email_id });
+    const user = await User.findOne({ email_id, auth_type: 'local' });
 
     if (!user) return res.status(400).json({ error: "User not found" });
 
@@ -120,6 +126,106 @@ exports.login = async (req, res) => {
     }
     console.error(err);
     res.status(500).json({ error: "Server error" });
+  }
+};
+
+exports.googleLogin = async (req, res) => {
+  try {
+    const { token } = req.body;
+    const ticket = await googleClient.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+
+    const { email, name, picture } = ticket.getPayload();
+
+    // Check if user exists
+    let user = await User.findOne({ email_id: email, auth_type: 'google' });
+
+    if (!user) {
+      // Create new user without company info
+      user = new User({
+        username: name,
+        email_id: email,
+        role: 'user', // Default role, will be updated during profile completion
+        email_verified: true,
+        auth_type: 'google',
+        pfp: picture
+      });
+
+      await user.save();
+    }
+
+    // Check if user needs to complete profile
+    const needsProfileCompletion = !user.company_id;
+
+    const jwtToken = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, {
+      expiresIn: "1d",
+    });
+
+    res.cookie("jwt", jwtToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "Strict",
+    });
+
+    res.json({ 
+      message: "Login successful", 
+      role: user.role,
+      needsProfileCompletion 
+    });
+  } catch (error) {
+    console.error('Google login error:', error);
+    res.status(500).json({ error: "Authentication failed" });
+  }
+};
+
+exports.completeProfile = async (req, res) => {
+  try {
+    const { role, company_name } = profileCompletionSchema.parse(req.body);
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    let company = await Company.findOne({ company_name });
+
+    if (role === "admin" && !company) {
+      company = new Company({ company_name });
+      await company.save();
+    }
+
+    if (role !== "admin" && !company) {
+      return res.status(400).json({
+        error: "Company does not exist. Contact an admin to register.",
+      });
+    }
+
+    user.role = role;
+    user.company_id = company._id;
+    await user.save();
+
+    const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, {
+      expiresIn: "1d",
+    });
+
+    res.cookie("jwt", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "Strict",
+    });
+
+    res.json({ 
+      message: "Profile completed successfully",
+      role: user.role
+    });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: err.issues[0].message });
+    }
+    console.error(err);
+    res.status(500).json({ error: "Failed to complete profile" });
   }
 };
 

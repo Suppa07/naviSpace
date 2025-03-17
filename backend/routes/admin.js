@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const adminController = require("../controllers/adminController");
+const analyticsController = require("../controllers/analyticsController");
 const authenticateAdmin = require("../middleware/authenticateAdmin");
 const multer = require("multer");
 const path = require("path");
@@ -21,6 +22,11 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage });
+
+// Analytics routes
+router.get("/analytics/attendance", authenticateAdmin, analyticsController.getAttendanceAnalytics);
+router.get("/analytics/daily", authenticateAdmin, analyticsController.getDailyAttendance);
+router.get("/analytics/employee/:userId", authenticateAdmin, analyticsController.getEmployeeAttendance);
 
 // Floor management routes
 router.post(
