@@ -1,13 +1,13 @@
-const jwt = require("jsonwebtoken");
+// const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const Resource = require("../models/Resource");
 const Reservation = require("../models/Reservation");
 const Floor = require("../models/Floor");
-const Company = require("../models/Company");
-const fs = require("fs");
-const path = require("path");
+// const Company = require("../models/Company");
+// const fs = require("fs");
+// const path = require("path");
 
-const JWT_SECRET = process.env.JWT_SECRET;
+// const JWT_SECRET = process.env.JWT_SECRET;
 
 exports.getAllUsers = async (req, res) => {
   try {

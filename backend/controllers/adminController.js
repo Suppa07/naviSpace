@@ -1,9 +1,8 @@
-const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const Resource = require("../models/Resource");
 const Reservation = require("../models/Reservation");
 const Floor = require("../models/Floor");
-const Company = require("../models/Company");
+const Favourite = require("../models/Favourite");
 const {
   uploadFileToS3,
   createGetObjectPreSignedURL,
@@ -11,8 +10,6 @@ const {
 } = require("./s3");
 const axios = require('axios');
 const path = require("path");
-
-const JWT_SECRET = process.env.JWT_SECRET;
 
 exports.getAllUsers = async (req, res) => {
   try {
@@ -46,7 +43,7 @@ exports.getAllUsers = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error(err);
+    // console.error(err);
     res.status(500).send("Error fetching users.");
   }
 };
@@ -58,18 +55,30 @@ exports.getAllReservations = async (req, res) => {
     const search = req.query.search || "";
     const skip = (page - 1) * limit;
 
-    let query = { end_time: { $gt: new Date() } };
-    if (search) {
-      const resources = await Resource.find({
-        name: { $regex: search, $options: "i" },
-      }).select("_id");
+    let query = { 
+      end_time: { $gt: new Date() },
+      company_id: req.user.company_id // Add company_id to query
+    };
+    let resourceQuery = {};
 
-      query.$or = [{ resource_id: { $in: resources.map((r) => r._id) } }];
+    if (search) {
+      resourceQuery = { name: { $regex: search, $options: "i" } };
+    }
+
+    const resources = await Resource.find(resourceQuery).select("_id");
+    if (search) {
+      query.resource_id = { $in: resources.map((r) => r._id) };
     }
 
     const total = await Reservation.countDocuments(query);
     const reservations = await Reservation.find(query)
-      .populate("resource_id")
+      .populate({
+        path: "resource_id",
+        populate: {
+          path: "floor_id",
+          select: "name"
+        }
+      })
       .skip(skip)
       .limit(limit)
       .sort({ start_time: 1 });
@@ -109,7 +118,7 @@ exports.getAllResources = async (req, res) => {
     const resources = await Resource.find(query)
       .populate("floor_id", "name")
       .skip(skip)
-      .limit(limit)
+      .limit(parseInt(limit))
       .sort({ name: 1 });
 
     res.json({
@@ -164,12 +173,12 @@ exports.reserveResource = async (req, res) => {
         end_time,
         participants: [user_id],
         resource_type: resource.resource_type,
+        company_id: req.user.company_id, // Add company_id
         is_fixed: false,
       });
 
       await newReservation.save({ session });
 
-      // Send email notification to the user
       try {
         const startDateTime = new Date(start_time).toLocaleString();
         const endDateTime = new Date(end_time).toLocaleString();
@@ -191,7 +200,6 @@ exports.reserveResource = async (req, res) => {
         });
       } catch (emailError) {
         console.error('Error sending reservation notification:', emailError);
-        // Continue with reservation creation even if email fails
       }
     });
 
@@ -213,19 +221,16 @@ exports.uploadFloorPlan = async (req, res) => {
   if (!file) {
     return res.status(400).send("File upload failed.");
   }
-  console.log(file);
 
   try {
     const key = `floorplans/${Date.now()}-${path.basename(file.originalname)}`;
 
-    console.log(file.path);
     const uploadResult = await uploadFileToS3(file, key);
 
     if (uploadResult.error) {
       throw new Error("Failed to upload to S3");
     }
 
-    // Delete the file locally
     fs.unlinkSync(file.path);
 
     const newFloor = new Floor({
@@ -286,7 +291,6 @@ exports.addResource = async (req, res) => {
 
     await newResource.save();
 
-    // Send email notification to all users in the company
     try {
       const companyUsers = await User.find({ company_id: req.user.company_id });
       const userEmails = companyUsers.map(user => user.email_id);
@@ -309,7 +313,6 @@ exports.addResource = async (req, res) => {
       });
     } catch (emailError) {
       console.error('Error sending resource notification:', emailError);
-      // Continue with resource creation even if email fails
     }
 
     res.json({
@@ -417,7 +420,11 @@ exports.deleteReservation = async (req, res) => {
     const reservation = await Reservation.findById(req.params.reservation_id);
 
     if (!reservation) return res.status(404).send("Reservation not found.");
-    if (reservation.company_id.toString() !== req.user.company_id.toString()) {
+    
+    const resource = await Resource.findById(reservation.resource_id);
+    if (!resource) return res.status(404).send("Resource not found.");
+
+    if (resource.company_id.toString() !== req.user.company_id.toString()) {
       return res
         .status(403)
         .send("Cannot delete reservations outside your company.");

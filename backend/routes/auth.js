@@ -11,5 +11,7 @@ router.get("/protected", authenticateToken, userController.getProtected);
 router.post("/logout", userController.logout);
 router.post("/verify-email", userController.verifyEmail);
 router.post("/resend-verification", userController.resendVerification);
+router.post("/request-password-reset", userController.requestPasswordReset);
+router.post("/reset-password", userController.resetPassword);
 
 module.exports = router;

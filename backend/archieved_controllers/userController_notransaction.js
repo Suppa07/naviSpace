@@ -3,7 +3,7 @@ const Reservation = require("../models/Reservation");
 const Favourite = require("../models/Favourite");
 const User = require("../models/User");
 const Floor = require("../models/Floor");
-const { createGetObjectPreSignedURL } = require("./s3");
+const { createGetObjectPreSignedURL } = require("../controllers/s3");
 const axios = require("axios");
 
 exports.bookResource = async (req, res) => {
@@ -25,56 +25,44 @@ exports.bookResource = async (req, res) => {
         .json({ error: "Resource is already booked for this time" });
     }
 
-    const session = await Reservation.startSession();
+    // Create the reservation
+    const newReservation = new Reservation({
+      resource_id: resourceId,
+      resource_type: resource.resource_type,
+      participants: [req.user.id],
+      start_time: startTime,
+      end_time: endTime,
+    });
+
+    await newReservation.save();
+
+    // Send email notification to the user
     try {
-      await session.withTransaction(async () => {
-        const newReservation = new Reservation({
-          resource_id: resourceId,
-          resource_type: resource.resource_type,
-          company_id: resource.company_id, // Add company_id from resource
-          participants: [req.user.id],
-          start_time: startTime,
-          end_time: endTime,
-        });
+      const user = await User.findById(req.user.id);
+      const startDateTime = new Date(startTime).toLocaleString();
+      const endDateTime = new Date(endTime).toLocaleString();
 
-        await newReservation.save({ session });
-
-        // Send email notification to the user
-        try {
-          const user = await User.findById(req.user.id);
-          const startDateTime = new Date(startTime).toLocaleString();
-          const endDateTime = new Date(endTime).toLocaleString();
-
-          await axios.post("http://localhost:5001/send-notification-to-user", {
-            user: user.email_id,
-            subject: "New Reservation Confirmation",
-            text: `Your reservation for ${resource.name} has been confirmed`,
-            html: `
-              <h2>Reservation Confirmation</h2>
-              <p>Your reservation has been confirmed with the following details:</p>
-              <ul>
-                <li><strong>Resource:</strong> ${resource.name}</li>
-                <li><strong>Type:</strong> ${resource.resource_type}</li>
-                <li><strong>Start Time:</strong> ${startDateTime}</li>
-                <li><strong>End Time:</strong> ${endDateTime}</li>
-              </ul>
-            `,
-          });
-        } catch (emailError) {
-          console.error("Error sending reservation confirmation:", emailError);
-          // Continue with reservation creation even if email fails
-        }
+      await axios.post("http://localhost:5001/send-notification-to-user", {
+        user: user.email_id,
+        subject: "New Reservation Confirmation",
+        text: `Your reservation for ${resource.name} has been confirmed`,
+        html: `
+          <h2>Reservation Confirmation</h2>
+          <p>Your reservation has been confirmed with the following details:</p>
+          <ul>
+            <li><strong>Resource:</strong> ${resource.name}</li>
+            <li><strong>Type:</strong> ${resource.resource_type}</li>
+            <li><strong>Start Time:</strong> ${startDateTime}</li>
+            <li><strong>End Time:</strong> ${endDateTime}</li>
+          </ul>
+        `,
       });
-      await session.commitTransaction();
-      res.json({ message: "Resource booked successfully" });
-    } catch (err) {
-      if (session.inTransaction()) {
-        await session.abortTransaction();
-      }
-      throw err;
-    } finally {
-      await session.endSession();
+    } catch (emailError) {
+      console.error("Error sending reservation confirmation:", emailError);
+      // Continue with reservation creation even if email fails
     }
+
+    res.json({ message: "Resource booked successfully" });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Server error" });
@@ -88,28 +76,76 @@ exports.getAvailability = async (req, res) => {
   try {
     const companyId = await User.findOne({ _id: req.user.id }, "company_id");
 
-    let query = {
-      resource_type: resourceType,
-      company_id: companyId.company_id,
-    };
+    let pipeline = [];
 
-    // Add search conditions if search query exists
+    // Add search stage if search query exists
     if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { amenities: { $regex: search, $options: 'i' } }
-      ];
+      pipeline.push({
+        $search: {
+          index: "resources_search",
+          compound: {
+            should: [
+              {
+                autocomplete: {
+                  query: search,
+                  path: "name",
+                  fuzzy: {
+                    maxEdits: 1,
+                  },
+                },
+              },
+              {
+                autocomplete: {
+                  query: search,
+                  path: "amenities",
+                  fuzzy: {
+                    maxEdits: 1,
+                  },
+                },
+              },
+            ],
+          },
+        },
+      });
     }
 
-    // Get total count
-    const totalResources = await Resource.countDocuments(query);
+    // Add match stage for resource type and company
+    pipeline.push({
+      $match: {
+        resource_type: resourceType,
+        company_id: companyId.company_id,
+      },
+    });
 
-    // Get resources with pagination
-    const resources = await Resource.find(query)
-      .populate('floor_id')
-      .skip(skip)
-      .limit(parseInt(limit))
-      .sort({ name: 1 });
+    // Add facet for pagination
+    pipeline.push({
+      $facet: {
+        metadata: [{ $count: "total" }],
+        resources: [
+          { $skip: skip },
+          { $limit: parseInt(limit) },
+          {
+            $lookup: {
+              from: "floors",
+              localField: "floor_id",
+              foreignField: "_id",
+              as: "floor_id",
+            },
+          },
+          {
+            $unwind: {
+              path: "$floor_id",
+              preserveNullAndEmptyArrays: true,
+            },
+          },
+        ],
+      },
+    });
+
+    const [result] = await Resource.aggregate(pipeline);
+
+    const resources = result.resources;
+    const totalResources = result.metadata[0]?.total || 0;
 
     // Get reservations for these resources
     const reservations = await Reservation.find({
@@ -341,7 +377,7 @@ exports.deleteReservation = async (req, res) => {
 exports.searchUserReservations = async (req, res) => {
   const { query } = req.query;
   const companyId = await User.findOne({ _id: req.user.id }, "company_id");
-
+  console.log(companyId);
   try {
     const user = await User.findOne({
       $or: [

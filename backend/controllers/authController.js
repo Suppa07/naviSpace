@@ -23,6 +23,12 @@ const profileCompletionSchema = z.object({
   company_name: z.string().min(1, "Company name is required"),
 });
 
+const resetPasswordSchema = z.object({
+  email: z.string().email("Invalid email"),
+  password: z.string().min(8, "Password must be at least 8 characters long"),
+  token: z.string().min(1, "Token is required")
+});
+
 exports.signup = async (req, res) => {
   try {
     const { username, email_id, password, role, company_name } =
@@ -304,5 +310,58 @@ exports.resendVerification = async (req, res) => {
   } catch (error) {
     console.error('Error resending verification:', error);
     res.status(500).json({ error: "Failed to resend verification email" });
+  }
+};
+
+exports.requestPasswordReset = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email_id: email, auth_type: 'local' });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    await axios.post('http://localhost:5001/send-reset-password-mail', {
+      email: email
+    });
+
+    res.json({ message: "Password reset email sent successfully" });
+  } catch (error) {
+    console.error('Error requesting password reset:', error);
+    res.status(500).json({ error: "Failed to send password reset email" });
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const { email, password, token } = resetPasswordSchema.parse(req.body);
+
+    // Verify token
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      if (decoded.email !== email) {
+        return res.status(400).json({ error: "Invalid token" });
+      }
+    } catch (err) {
+      return res.status(400).json({ error: "Invalid or expired token" });
+    }
+
+    const user = await User.findOne({ email_id: email, auth_type: 'local' });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 12);
+    user.password = hashedPassword;
+    await user.save();
+
+    res.json({ message: "Password reset successfully" });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: err.issues[0].message });
+    }
+    console.error('Error resetting password:', err);
+    res.status(500).json({ error: "Failed to reset password" });
   }
 };

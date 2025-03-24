@@ -58,7 +58,7 @@ exports.getAttendanceAnalytics = async (req, res) => {
       attendance,
     });
   } catch (error) {
-    console.error("Error getting attendance analytics:", error);
+    // console.error("Error getting attendance analytics:", error);
     res.status(500).json({ error: "Failed to get attendance analytics" });
   }
 };
@@ -72,12 +72,15 @@ exports.getDailyAttendance = async (req, res) => {
     const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
     const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
 
+    // Get total employee count for percentage calculation
+    const totalEmployees = await User.countDocuments({ company_id: companyId });
+
     // Get all reservations for the day
     const reservations = await Reservation.find({
       participants: { $exists: true, $not: { $size: 0 } },
       start_time: { $lte: endOfDay },
       end_time: { $gte: startOfDay },
-    }).populate("participants", "username email_id");
+    }).populate('participants');
 
     // Calculate unique employees present
     const uniqueEmployees = new Set();
@@ -86,9 +89,6 @@ exports.getDailyAttendance = async (req, res) => {
         uniqueEmployees.add(participant._id.toString());
       });
     });
-
-    // Get total employee count for percentage calculation
-    const totalEmployees = await User.countDocuments({ company_id: companyId });
 
     // Calculate attendance by hour
     const hourlyAttendance = Array(24).fill(0);
@@ -104,7 +104,7 @@ exports.getDailyAttendance = async (req, res) => {
       date: format(targetDate, "yyyy-MM-dd"),
       totalEmployees,
       presentEmployees: uniqueEmployees.size,
-      attendancePercentage: (uniqueEmployees.size / totalEmployees) * 100,
+      attendancePercentage: totalEmployees > 0 ? (uniqueEmployees.size / totalEmployees) * 100 : 0,
       hourlyAttendance,
       reservations: reservations.map((res) => ({
         time: {
@@ -120,7 +120,7 @@ exports.getDailyAttendance = async (req, res) => {
       })),
     });
   } catch (error) {
-    console.error("Error getting daily attendance:", error);
+    // console.error("Error getting daily attendance:", error);
     res.status(500).json({ error: "Failed to get daily attendance" });
   }
 };

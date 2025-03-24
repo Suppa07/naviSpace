@@ -3,7 +3,14 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "start": "node --watch ./bin/www"
+    "start": "node --watch ./bin/www",
+    "test": "NODE_ENV=test jest --coverage --detectOpenHandles --maxWorkers=4",
+    "test:watch": "NODE_ENV=test jest --watch --detectOpenHandles",
+    "lint": "eslint .",
+    "lint:fix": "npm run lint -- --fix",
+    "prettier": "npx prettier .",
+    "prettier:fix": "npm run prettier --",
+    "format": "npm run prettier:fix && npm run lint:fix"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.758.0",
@@ -29,9 +36,62 @@
     "morgan": "~1.9.1",
     "multer": "^1.4.5-lts.1",
     "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.13",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
-    "pathfinding": "^0.4.18",
     "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.3",
+    "@babel/preset-env": "^7.24.3",
+    "@babel/preset-react": "^7.24.3",
+    "@eslint/js": "^9.22.0",
+    "@types/jest": "^29.5.12",
+    "@types/supertest": "^6.0.2",
+    "babel-jest": "^29.7.0",
+    "eslint": "^9.22.0",
+    "eslint-config-prettier": "^10.1.1",
+    "globals": "^16.0.0",
+    "jest": "^27.0.6",
+    "jest-environment-node": "^29.7.0",
+    "mongodb-memory-server": "^9.1.7",
+    "prettier": "3.5.3",
+    "supertest": "^6.3.4",
+    "@aws-sdk/client-s3": "^3.x.x",
+    "@aws-sdk/s3-request-presigner": "^3.x.x",
+    "mongodb-memory-server-core": "^9.1.7"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "coveragePathIgnorePatterns": [
+      "/node_modules/",
+      "/config/",
+      "/public/",
+      "/views/"
+    ],
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/setup.js"
+    ],
+    "transform": {
+      "^.+\\.jsx?$": "babel-jest"
+    },
+    "testTimeout": 60000,
+    "maxWorkers": 4,
+    "collectCoverageFrom": [
+      "controllers/**/*.js",
+      "models/**/*.js",
+      "middleware/**/*.js",
+      "routes/**/*.js",
+      "!**/node_modules/**",
+      "!**/controllers/chatbotController.js"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 80,
+        "functions": 80,
+        "lines": 80,
+        "statements": 80
+      }
+    }
   }
 }

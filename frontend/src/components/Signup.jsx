@@ -106,11 +106,12 @@ const Signup = () => {
         { withCredentials: true }
       );
 
-      if (formData.role === 'admin') {
-        navigate('/admin');
-      } else if (formData.role === 'user') {
-        navigate('/user');
-      }
+      navigate('/login');
+      // if (formData.role === 'admin') {
+      //   navigate('/admin');
+      // } else if (formData.role === 'user') {
+      //   navigate('/user');
+      // }
     } catch (err) {
       setError(
         err.response?.data?.message || 'Signup failed. Please try again.'
